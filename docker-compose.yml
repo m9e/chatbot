@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: redis-instance
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+    driver: local

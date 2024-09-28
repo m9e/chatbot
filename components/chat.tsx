@@ -82,7 +82,7 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
         {messages.length ? (
-          <ChatList messages={messages} isShared={false} session={session} />
+          <ChatList messages={messages} isShared={false} session={session} selectedModel={selectedModel} />
         ) : (
           <EmptyScreen />
         )}

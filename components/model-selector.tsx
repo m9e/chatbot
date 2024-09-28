@@ -40,10 +40,11 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   const handleModelChange = async (modelName: string) => {
     const selectedDeployment = deployments.find(d => d.m_name === modelName)
     if (selectedDeployment) {
-      const baseUrl = `https://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
+      const baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
       await selectKamiwazaModel(baseUrl, modelName)
       setSelectedModel(modelName)
       onModelSelect({ baseUrl, modelName })
+      console.log('Model selected:', { baseUrl, modelName });  // Add this line
     }
   }
 

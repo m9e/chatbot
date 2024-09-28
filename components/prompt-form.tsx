@@ -44,6 +44,8 @@ export function PromptForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    console.log('PromptForm handleSubmit selectedModel:', selectedModel);
+
     if (!selectedModel) {
       toast.error('Please select a model before sending a message.')
       return
@@ -80,6 +82,8 @@ export function PromptForm({
       toast.error('Failed to send message. Please try again.')
     }
   }
+
+  console.log('PromptForm render, selectedModel:', selectedModel);
 
   return (
     <form ref={formRef} onSubmit={handleSubmit}>

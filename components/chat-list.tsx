@@ -1,16 +1,19 @@
 import { Separator } from '@/components/ui/separator'
 import { UIState } from '@/lib/chat/actions'
-import { Session } from '@/lib/types'
+import { Session, ModelInfo } from '@/lib/types'
 import Link from 'next/link'
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons'
+import { ChatMessage } from '@/components/chat-message'
+import React from 'react'
 
 export interface ChatList {
   messages: UIState
   session?: Session
   isShared: boolean
+  selectedModel: ModelInfo | null
 }
 
-export function ChatList({ messages, session, isShared }: ChatList) {
+export function ChatList({ messages, session, isShared, selectedModel }: ChatList) {
   if (!messages.length) {
     return null
   }
@@ -40,10 +43,17 @@ export function ChatList({ messages, session, isShared }: ChatList) {
           <Separator className="my-4" />
         </>
       ) : null}
-
       {messages.map((message, index) => (
         <div key={message.id}>
-          {message.display}
+          {message.display ? (
+            React.isValidElement(message.display) ? (
+              React.cloneElement(message.display, { ...message.display.props, selectedModel })
+            ) : (
+              message.display
+            )
+          ) : (
+            <ChatMessage message={message} selectedModel={selectedModel} />
+          )}
           {index < messages.length - 1 && <Separator className="my-4" />}
         </div>
       ))}

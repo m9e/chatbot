@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  chat-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - KV_URL=redis://redis:6379
+      - KV_REST_API_URL=http://redis:6379
+      - KV_REST_API_TOKEN=dummy_token
+      - KV_REST_API_READ_ONLY_TOKEN=dummy_readonly_token
+      - KAMIWAZA_API_URI=http://kamiwaza-host:port
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+    driver: local

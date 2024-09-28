@@ -8,14 +8,21 @@ import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { CodeBlock } from '@/components/ui/codeblock'
 import { MemoizedReactMarkdown } from '@/components/markdown'
-import { IconOpenAI, IconUser } from '@/components/ui/icons'
+import { IconOpenAI, IconKamiwazaAI, IconUser } from '@/components/ui/icons'
 import { ChatMessageActions } from '@/components/chat-message-actions'
+import { ModelInfo } from '@/lib/types'
 
 export interface ChatMessageProps {
   message: Message
+  selectedModel: ModelInfo | null
 }
 
-export function ChatMessage({ message, ...props }: ChatMessageProps) {
+export function ChatMessage({ message, selectedModel, ...props }: ChatMessageProps) {
+  const isKamiwazaModel = selectedModel && selectedModel.baseUrl
+
+  console.log('ChatMessage - selectedModel:', selectedModel);
+  console.log('ChatMessage - isKamiwazaModel:', isKamiwazaModel);
+
   return (
     <div
       className={cn('group relative mb-4 flex items-start md:-ml-12')}
@@ -29,7 +36,7 @@ export function ChatMessage({ message, ...props }: ChatMessageProps) {
             : 'bg-primary text-primary-foreground'
         )}
       >
-        {message.role === 'user' ? <IconUser /> : <IconOpenAI />}
+        {message.role === 'user' ? <IconUser /> : (isKamiwazaModel ? <IconKamiwazaAI /> : <IconOpenAI />)}
       </div>
       <div className="flex-1 px-1 ml-4 space-y-2 overflow-hidden">
         <MemoizedReactMarkdown

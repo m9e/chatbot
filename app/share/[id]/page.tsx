@@ -49,7 +49,7 @@ export default async function SharePage({ params }: SharePageProps) {
           </div>
         </div>
         <AI>
-          <ChatList messages={uiState} isShared={true} />
+          <ChatList messages={uiState} isShared={true} selectedModel={selectedModel} />
         </AI>
       </div>
       <FooterText className="py-8" />

@@ -104,6 +104,17 @@ function IconOpenAI({ className, ...props }: React.ComponentProps<'svg'>) {
   )
 }
 
+function IconKamiwazaAI({ className, ...props }: React.ComponentProps<'img'>) {
+  return (
+    <img
+      src="/kamiwaza-ai-icon.png"
+      alt="KamiwazaAI Icon"
+      className={cn('size-4', className)}
+      {...props}
+    />
+  )
+}
+
 function IconVercel({ className, ...props }: React.ComponentProps<'svg'>) {
   return (
     <svg
@@ -479,7 +490,8 @@ function IconChevronUpDown({
 export {
   IconEdit,
   IconNextChat,
-  IconOpenAI,
+  IconnAI,
+  IconKamiwazaAI,
   IconVercel,
   IconGitHub,
   IconSeparator,

@@ -1,8 +1,9 @@
-import * as React from 'react'
-import Link from 'next/link'
+'use client'
 
+import * as React from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import { auth } from '@/auth'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   IconGitHub,
@@ -14,35 +15,58 @@ import { UserMenu } from '@/components/user-menu'
 import { SidebarMobile } from './sidebar-mobile'
 import { SidebarToggle } from './sidebar-toggle'
 import { ChatHistory } from './chat-history'
-import { Session } from '@/lib/types'
+import { verifyToken, UserData } from '@/lib/kamiwazaApi'
 
-async function UserOrLogin() {
-  const session = (await auth()) as Session
+function UserOrLogin() {
+  const [user, setUser] = useState<UserData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const userData = await verifyToken()
+        setUser(userData)
+      } catch (error) {
+        console.error('Error verifying token:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    checkUser()
+  }, [])
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
+
   return (
     <>
-      {session?.user ? (
+      {user ? (
         <>
           <SidebarMobile>
-            <ChatHistory userId={session.user.id} />
+            <ChatHistory userId={user.id} />
           </SidebarMobile>
           <SidebarToggle />
+          <div className="flex items-center">
+            <IconSeparator className="size-6 text-muted-foreground/50" />
+            <UserMenu user={user} />
+            <span className="ml-2">Welcome, {user.full_name}</span>
+          </div>
         </>
       ) : (
-        <Link href="/new" rel="nofollow">
-          <IconNextChat className="size-6 mr-2 dark:hidden" inverted />
-          <IconNextChat className="hidden size-6 mr-2 dark:block" />
-        </Link>
+        <>
+          <Link href="/new" rel="nofollow">
+            <IconNextChat className="size-6 mr-2 dark:hidden" inverted />
+            <IconNextChat className="hidden size-6 mr-2 dark:block" />
+          </Link>
+          <div className="flex items-center">
+            <IconSeparator className="size-6 text-muted-foreground/50" />
+            <Button variant="link" asChild className="-ml-2">
+              <Link href="/login">Login to Kamiwaza</Link>
+            </Button>
+          </div>
+        </>
       )}
-      <div className="flex items-center">
-        <IconSeparator className="size-6 text-muted-foreground/50" />
-        {session?.user ? (
-          <UserMenu user={session.user} />
-        ) : (
-          <Button variant="link" asChild className="-ml-2">
-            <Link href="/login">Login</Link>
-          </Button>
-        )}
-      </div>
     </>
   )
 }
@@ -68,6 +92,7 @@ export function Header() {
         <a
           href="https://vercel.com/templates/Next.js/nextjs-ai-chatbot"
           target="_blank"
+          rel="noopener noreferrer"
           className={cn(buttonVariants())}
         >
           <IconVercel className="mr-2" />
