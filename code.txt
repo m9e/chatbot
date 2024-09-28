@@ -166,9 +166,9 @@ module.exports = {
 {
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev --turbo -p 3003",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3003",
     "type-check": "tsc --noEmit",
     "format:write": "prettier --write \"{app,lib,components}/**/*.{ts,tsx,mdx}\" --cache",
     "format:check": "prettier --check \"{app,lib,components}**/*.{ts,tsx,mdx}\" --cache"
@@ -717,6 +717,75 @@ export default async function SignupPage() {
 }
 
 
+// app/kamiwaza/actions.ts 
+'use server'
+
+import { revalidatePath } from 'next/cache'
+
+interface Deployment {
+  m_name: string
+  instances: Array<{ host_name: string }>
+  lb_port: number
+  status: string
+}
+
+/**
+ * Fetches the list of available Kamiwaza deployments from the API.
+ * 
+ * @returns An array of Deployment objects representing available models.
+ */
+export async function getKamiwazaDeployments() {
+  try {
+    const kamiwazaApiUri = process.env.KAMIWAZA_API_URI
+    if (!kamiwazaApiUri) {
+      throw new Error('KAMIWAZA_API_URI is not defined')
+    }
+
+    const response = await fetch(`${kamiwazaApiUri}/api/serving/deployments`, {
+      next: { revalidate: 10 } // Revalidate every 10 seconds to ensure up-to-date deployment information
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch deployments')
+    }
+
+    const data = await response.json()
+    // Filter to only include deployed models
+    const filteredDeployments = data.filter((d: Deployment) => d.status === 'DEPLOYED')
+
+    revalidatePath('/') // Revalidate the home page to reflect any changes in available models
+
+    return filteredDeployments
+  } catch (error) {
+    console.error('Error fetching deployments:', error)
+    return []
+  }
+}
+
+/**
+ * Prepares the selected Kamiwaza model information for client-side use.
+ * 
+ * This function doesn't perform any server-side selection logic. Instead, it
+ * packages the information about the selected model (which was chosen client-side)
+ * for use in subsequent API calls.
+ * 
+ * @param baseUrl The base URL of the selected model's API endpoint.
+ * @param modelName The name of the selected model.
+ * @returns An object containing the baseUrl and modelName of the selected model.
+ */
+export async function selectKamiwazaModel(baseUrl: string, modelName: string) {
+  // No server-side logic is performed here.
+  // This function simply returns the model information as provided.
+  // The actual selection happens on the client side in the ModelSelector component.
+  
+  // In a more complex scenario, you might want to log the selection,
+  // update user preferences, or perform other non-critical operations here.
+
+  console.log(`Model selected: ${modelName} at ${baseUrl}`)
+
+  return { baseUrl, modelName }
+}
+
 // app/new/page.tsx 
 import { redirect } from 'next/navigation'
 
@@ -982,7 +1051,7 @@ export default async function SharePage({ params }: SharePageProps) {
           </div>
         </div>
         <AI>
-          <ChatList messages={uiState} isShared={true} />
+          <ChatList messages={uiState} isShared={true} selectedModel={selectedModel} />
         </AI>
       </div>
       <FooterText className="py-8" />
@@ -1068,9 +1137,7 @@ export const MemoizedReactMarkdown: FC<Options> = memo(
 
 import * as React from 'react'
 import Textarea from 'react-textarea-autosize'
-
 import { useActions, useUIState } from 'ai/rsc'
-
 import { UserMessage } from './stocks/message'
 import { type AI } from '@/lib/chat/actions'
 import { Button } from '@/components/ui/button'
@@ -1083,14 +1150,20 @@ import {
 import { useEnterSubmit } from '@/lib/hooks/use-enter-submit'
 import { nanoid } from 'nanoid'
 import { useRouter } from 'next/navigation'
+import { ModelInfo } from '@/lib/types'
+import { toast } from 'sonner'
+
+interface PromptFormProps {
+  input: string
+  setInput: (value: string) => void
+  selectedModel: ModelInfo | null
+}
 
 export function PromptForm({
   input,
-  setInput
-}: {
-  input: string
-  setInput: (value: string) => void
-}) {
+  setInput,
+  selectedModel
+}: PromptFormProps) {
   const router = useRouter()
   const { formRef, onKeyDown } = useEnterSubmit()
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
@@ -1103,35 +1176,52 @@ export function PromptForm({
     }
   }, [])
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    console.log('PromptForm handleSubmit selectedModel:', selectedModel);
+
+    if (!selectedModel) {
+      toast.error('Please select a model before sending a message.')
+      return
+    }
+
+    // Blur focus on mobile
+    if (window.innerWidth < 600) {
+      inputRef.current?.blur()
+    }
+
+    const value = input.trim()
+    setInput('')
+    if (!value) return
+
+    // Optimistically add user message UI
+    setMessages(currentMessages => [
+      ...currentMessages,
+      {
+        id: nanoid(),
+        display: <UserMessage>{value}</UserMessage>
+      }
+    ])
+
+    try {
+      // Submit and get response message
+      const responseMessage = await submitUserMessage({
+        message: value,
+        baseUrl: selectedModel.baseUrl,
+        modelName: selectedModel.modelName
+      })
+      setMessages(currentMessages => [...currentMessages, responseMessage])
+    } catch (error) {
+      console.error('Error submitting message:', error)
+      toast.error('Failed to send message. Please try again.')
+    }
+  }
+
+  console.log('PromptForm render, selectedModel:', selectedModel);
+
   return (
-    <form
-      ref={formRef}
-      onSubmit={async (e: any) => {
-        e.preventDefault()
-
-        // Blur focus on mobile
-        if (window.innerWidth < 600) {
-          e.target['message']?.blur()
-        }
-
-        const value = input.trim()
-        setInput('')
-        if (!value) return
-
-        // Optimistically add user message UI
-        setMessages(currentMessages => [
-          ...currentMessages,
-          {
-            id: nanoid(),
-            display: <UserMessage>{value}</UserMessage>
-          }
-        ])
-
-        // Submit and get response message
-        const responseMessage = await submitUserMessage(value)
-        setMessages(currentMessages => [...currentMessages, responseMessage])
-      }}
-    >
+    <form ref={formRef} onSubmit={handleSubmit}>
       <div className="relative flex max-h-60 w-full grow flex-col overflow-hidden bg-background px-8 sm:rounded-md sm:border sm:px-12">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1177,6 +1267,77 @@ export function PromptForm({
         </div>
       </div>
     </form>
+  )
+}
+
+// components/model-selector.tsx 
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getKamiwazaDeployments, selectKamiwazaModel } from '@/app/kamiwaza/actions'
+import { ModelInfo } from '@/lib/types'
+
+interface Deployment {
+  m_name: string
+  instances: Array<{ host_name: string }>
+  lb_port: number
+}
+
+interface ModelSelectorProps {
+  onModelSelect: (modelInfo: ModelInfo | null) => void
+}
+
+export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
+  const [deployments, setDeployments] = useState<Deployment[]>([])
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchDeployments = async () => {
+      try {
+        const fetchedDeployments = await getKamiwazaDeployments()
+        setDeployments(fetchedDeployments)
+
+        if (fetchedDeployments.length === 1) {
+          const deployment = fetchedDeployments[0]
+          handleModelChange(deployment.m_name)
+        }
+      } catch (error) {
+        console.error('Failed to fetch deployments:', error)
+      }
+    }
+
+    fetchDeployments()
+  }, [])
+
+  const handleModelChange = async (modelName: string) => {
+    const selectedDeployment = deployments.find(d => d.m_name === modelName)
+    if (selectedDeployment) {
+      const baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
+      await selectKamiwazaModel(baseUrl, modelName)
+      setSelectedModel(modelName)
+      onModelSelect({ baseUrl, modelName })
+      console.log('Model selected:', { baseUrl, modelName });  // Add this line
+    }
+  }
+
+  if (deployments.length === 0) {
+    return null
+  }
+
+  return (
+    <Select onValueChange={handleModelChange} value={selectedModel || undefined}>
+      <SelectTrigger className="w-[200px]">
+        <SelectValue placeholder="Select a model" />
+      </SelectTrigger>
+      <SelectContent>
+        {deployments.map(deployment => (
+          <SelectItem key={deployment.m_name} value={deployment.m_name}>
+            {deployment.m_name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -1415,7 +1576,7 @@ export function SidebarToggle() {
 
 // components/chat-panel.tsx 
 import * as React from 'react'
-
+import { useRouter } from 'next/navigation'
 import { shareChat } from '@/app/actions'
 import { Button } from '@/components/ui/button'
 import { PromptForm } from '@/components/prompt-form'
@@ -1424,9 +1585,11 @@ import { IconShare } from '@/components/ui/icons'
 import { FooterText } from '@/components/footer'
 import { ChatShareDialog } from '@/components/chat-share-dialog'
 import { useAIState, useActions, useUIState } from 'ai/rsc'
+import { ModelInfo } from '@/lib/types'
 import type { AI } from '@/lib/chat/actions'
 import { nanoid } from 'nanoid'
 import { UserMessage } from './stocks/message'
+import { toast } from 'sonner'
 
 export interface ChatPanelProps {
   id?: string
@@ -1435,6 +1598,7 @@ export interface ChatPanelProps {
   setInput: (value: string) => void
   isAtBottom: boolean
   scrollToBottom: () => void
+  selectedModel: ModelInfo | null
 }
 
 export function ChatPanel({
@@ -1443,8 +1607,10 @@ export function ChatPanel({
   input,
   setInput,
   isAtBottom,
-  scrollToBottom
+  scrollToBottom,
+  selectedModel
 }: ChatPanelProps) {
+  const router = useRouter()
   const [aiState] = useAIState()
   const [messages, setMessages] = useUIState<typeof AI>()
   const { submitUserMessage } = useActions()
@@ -1472,6 +1638,37 @@ export function ChatPanel({
       message: `What are some recent events about $DOGE?`
     }
   ]
+  const handleSubmit = async (value: string) => {
+    if (!selectedModel) {
+      toast.error('Please select a model before sending a message.')
+      return
+    }
+
+    setInput('')
+    // Optimistically add user message UI
+    setMessages(currentMessages => [
+      ...currentMessages,
+      {
+        id: nanoid(),
+        display: <UserMessage>{value}</UserMessage>
+      }
+    ])
+
+    try {
+      // Submit and get response message
+      const responseMessage = await submitUserMessage({
+        message: value,
+        baseUrl: selectedModel.baseUrl,
+        modelName: selectedModel.modelName
+      })
+      setMessages(currentMessages => [...currentMessages, responseMessage])
+    } catch (error) {
+      console.error('Error submitting message:', error)
+      toast.error('Failed to send message. Please try again.')
+    }
+  }
+
+  console.log('ChatPanel selectedModel:', selectedModel); 
 
   return (
     <div className="fixed inset-x-0 bottom-0 w-full bg-gradient-to-b from-muted/30 from-0% to-muted/30 to-50% duration-300 ease-in-out animate-in dark:from-background/10 dark:from-10% dark:to-background/80 peer-[[data-state=open]]:group-[]:lg:pl-[250px] peer-[[data-state=open]]:group-[]:xl:pl-[300px]">
@@ -1489,24 +1686,7 @@ export function ChatPanel({
                 className={`cursor-pointer rounded-lg border bg-white p-4 hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900 ${
                   index > 1 && 'hidden md:block'
                 }`}
-                onClick={async () => {
-                  setMessages(currentMessages => [
-                    ...currentMessages,
-                    {
-                      id: nanoid(),
-                      display: <UserMessage>{example.message}</UserMessage>
-                    }
-                  ])
-
-                  const responseMessage = await submitUserMessage(
-                    example.message
-                  )
-
-                  setMessages(currentMessages => [
-                    ...currentMessages,
-                    responseMessage
-                  ])
-                }}
+                onClick={() => handleSubmit(example.message)}
               >
                 <div className="text-sm font-semibold">{example.heading}</div>
                 <div className="text-sm text-zinc-600">
@@ -1546,14 +1726,25 @@ export function ChatPanel({
         ) : null}
 
         <div className="space-y-4 border-t bg-background px-4 py-2 shadow-lg sm:rounded-t-xl sm:border md:py-4">
-          <PromptForm input={input} setInput={setInput} />
-          <FooterText className="hidden sm:block" />
-        </div>
+          {selectedModel && (
+            <div className="text-sm text-muted-foreground">
+            <div>Model: {selectedModel.modelName}</div>
+            <div>Base URL: {selectedModel.baseUrl}</div>
+          </div>
+        )}
+        <PromptForm
+          onSubmit={handleSubmit}
+          input={input}
+          setInput={setInput}
+          isLoading={false}
+          selectedModel={selectedModel}  // Make sure this line exists
+        />
+        <FooterText className="hidden sm:block" />
+      </div>
       </div>
     </div>
   )
 }
-
 
 // components/footer.tsx 
 import React from 'react'
@@ -1778,17 +1969,20 @@ export function EmptyScreen() {
 // components/chat-list.tsx 
 import { Separator } from '@/components/ui/separator'
 import { UIState } from '@/lib/chat/actions'
-import { Session } from '@/lib/types'
+import { Session, ModelInfo } from '@/lib/types'
 import Link from 'next/link'
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons'
+import { ChatMessage } from '@/components/chat-message'
+import React from 'react'
 
 export interface ChatList {
   messages: UIState
   session?: Session
   isShared: boolean
+  selectedModel: ModelInfo | null
 }
 
-export function ChatList({ messages, session, isShared }: ChatList) {
+export function ChatList({ messages, session, isShared, selectedModel }: ChatList) {
   if (!messages.length) {
     return null
   }
@@ -1818,17 +2012,23 @@ export function ChatList({ messages, session, isShared }: ChatList) {
           <Separator className="my-4" />
         </>
       ) : null}
-
       {messages.map((message, index) => (
         <div key={message.id}>
-          {message.display}
+          {message.display ? (
+            React.isValidElement(message.display) ? (
+              React.cloneElement(message.display, { ...message.display.props, selectedModel })
+            ) : (
+              message.display
+            )
+          ) : (
+            <ChatMessage message={message} selectedModel={selectedModel} />
+          )}
           {index < messages.length - 1 && <Separator className="my-4" />}
         </div>
       ))}
     </div>
   )
 }
-
 
 // components/button-scroll-to-bottom.tsx 
 'use client'
@@ -2211,10 +2411,11 @@ import { cn } from '@/lib/utils'
 import { ChatList } from '@/components/chat-list'
 import { ChatPanel } from '@/components/chat-panel'
 import { EmptyScreen } from '@/components/empty-screen'
+import { ModelSelector } from '@/components/model-selector'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
 import { useEffect, useState } from 'react'
 import { useUIState, useAIState } from 'ai/rsc'
-import { Message, Session } from '@/lib/types'
+import { Message, Session, ModelInfo } from '@/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
 import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
@@ -2232,6 +2433,7 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
   const [input, setInput] = useState('')
   const [messages] = useUIState()
   const [aiState] = useAIState()
+  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
 
@@ -2252,10 +2454,10 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
 
   useEffect(() => {
     setNewChatId(id)
-  })
+  }, [id, setNewChatId])
 
   useEffect(() => {
-    missingKeys.map(key => {
+    missingKeys.forEach(key => {
       toast.error(`Missing ${key} environment variable!`)
     })
   }, [missingKeys])
@@ -2263,17 +2465,31 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
   const { messagesRef, scrollRef, visibilityRef, isAtBottom, scrollToBottom } =
     useScrollAnchor()
 
+  const handleModelSelect = (modelInfo: ModelInfo | null) => {
+    setSelectedModel(modelInfo)
+    // Here you can add any additional logic needed when a model is selected
+    // For example, you might want to update the AI state or reset the chat
+  }
+
   return (
     <div
-      className="group w-full overflow-auto pl-0 peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px]"
+      className={cn(
+        'group w-full overflow-auto pl-0 peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px]',
+        className
+      )}
       ref={scrollRef}
     >
-      <div
-        className={cn('pb-[200px] pt-4 md:pt-10', className)}
-        ref={messagesRef}
-      >
+      <div className="fixed top-16 right-4 z-50 flex items-center">
+        <ModelSelector onModelSelect={handleModelSelect} />
+        {selectedModel && (
+          <span className="ml-2 text-sm text-gray-500">
+            Model: {selectedModel.modelName}
+          </span>
+        )}
+      </div>
+      <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
         {messages.length ? (
-          <ChatList messages={messages} isShared={false} session={session} />
+          <ChatList messages={messages} isShared={false} session={session} selectedModel={selectedModel} />
         ) : (
           <EmptyScreen />
         )}
@@ -2285,11 +2501,11 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
         setInput={setInput}
         isAtBottom={isAtBottom}
         scrollToBottom={scrollToBottom}
+        selectedModel={selectedModel}
       />
     </div>
   )
 }
-
 
 // components/sidebar-mobile.tsx 
 'use client'
@@ -2632,14 +2848,21 @@ import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { CodeBlock } from '@/components/ui/codeblock'
 import { MemoizedReactMarkdown } from '@/components/markdown'
-import { IconOpenAI, IconUser } from '@/components/ui/icons'
+import { IconOpenAI, IconKamiwazaAI, IconUser } from '@/components/ui/icons'
 import { ChatMessageActions } from '@/components/chat-message-actions'
+import { ModelInfo } from '@/lib/types'
 
 export interface ChatMessageProps {
   message: Message
+  selectedModel: ModelInfo | null
 }
 
-export function ChatMessage({ message, ...props }: ChatMessageProps) {
+export function ChatMessage({ message, selectedModel, ...props }: ChatMessageProps) {
+  const isKamiwazaModel = selectedModel && selectedModel.baseUrl
+
+  console.log('ChatMessage - selectedModel:', selectedModel);
+  console.log('ChatMessage - isKamiwazaModel:', isKamiwazaModel);
+
   return (
     <div
       className={cn('group relative mb-4 flex items-start md:-ml-12')}
@@ -2653,7 +2876,7 @@ export function ChatMessage({ message, ...props }: ChatMessageProps) {
             : 'bg-primary text-primary-foreground'
         )}
       >
-        {message.role === 'user' ? <IconUser /> : <IconOpenAI />}
+        {message.role === 'user' ? <IconUser /> : (isKamiwazaModel ? <IconKamiwazaAI /> : <IconOpenAI />)}
       </div>
       <div className="flex-1 px-1 ml-4 space-y-2 overflow-hidden">
         <MemoizedReactMarkdown
@@ -3344,6 +3567,17 @@ function IconOpenAI({ className, ...props }: React.ComponentProps<'svg'>) {
   )
 }
 
+function IconKamiwazaAI({ className, ...props }: React.ComponentProps<'img'>) {
+  return (
+    <img
+      src="/kamiwaza-ai-icon.png"
+      alt="KamiwazaAI Icon"
+      className={cn('size-4', className)}
+      {...props}
+    />
+  )
+}
+
 function IconVercel({ className, ...props }: React.ComponentProps<'svg'>) {
   return (
     <svg
@@ -3719,7 +3953,8 @@ function IconChevronUpDown({
 export {
   IconEdit,
   IconNextChat,
-  IconOpenAI,
+  IconnAI,
+  IconKamiwazaAI,
   IconVercel,
   IconGitHub,
   IconSeparator,
@@ -5014,7 +5249,7 @@ export const StocksSkeleton = () => {
 // components/stocks/message.tsx 
 'use client'
 
-import { IconOpenAI, IconUser } from '@/components/ui/icons'
+import { IconOpenAI, IconKamiwazaAI, IconUser } from '@/components/ui/icons'
 import { cn } from '@/lib/utils'
 import { spinner } from './spinner'
 import { CodeBlock } from '../ui/codeblock'
@@ -5023,6 +5258,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { StreamableValue } from 'ai/rsc'
 import { useStreamableText } from '@/lib/hooks/use-streamable-text'
+import { ModelInfo } from '@/lib/types'
 
 // Different types of message bubbles.
 
@@ -5041,17 +5277,21 @@ export function UserMessage({ children }: { children: React.ReactNode }) {
 
 export function BotMessage({
   content,
-  className
+  className,
+  selectedModel
 }: {
   content: string | StreamableValue<string>
   className?: string
+  selectedModel: ModelInfo | null
 }) {
   const text = useStreamableText(content)
+
+  const isKamiwazaModel = selectedModel && selectedModel.baseUrl
 
   return (
     <div className={cn('group relative flex items-start md:-ml-12', className)}>
       <div className="flex size-[24px] shrink-0 select-none items-center justify-center rounded-md border bg-primary text-primary-foreground shadow-sm">
-        <IconOpenAI />
+        {isKamiwazaModel ? <IconKamiwazaAI /> : <IconOpenAI />}
       </div>
       <div className="ml-4 flex-1 space-y-2 overflow-hidden px-1">
         <MemoizedReactMarkdown
@@ -5530,6 +5770,10 @@ export interface User extends Record<string, any> {
   salt: string
 }
 
+export interface ModelInfo {
+  baseUrl: string
+  modelName: string
+}
 
 // lib/chat/actions.tsx 
 import 'server-only'
@@ -5640,19 +5884,39 @@ async function confirmPurchase(symbol: string, price: number, amount: number) {
   }
 }
 
-async function submitUserMessage(content: string) {
+async function selectModel(baseUrl: string, modelName: string) {
   'use server'
 
   const aiState = getMutableAIState<typeof AI>()
-
+  
   aiState.update({
     ...aiState.get(),
+    selectedModel: { baseUrl, modelName }
+  })
+
+  return { success: true }
+}
+
+async function submitUserMessage({ message, baseUrl, modelName }: {
+  message: string,
+  baseUrl: string,
+  modelName: string
+}) {
+  'use server'
+
+  console.log(`Submitting message with baseUrl: ${baseUrl}, modelName: ${modelName}`);
+
+  const aiState = getMutableAIState<typeof AI>()
+  const currentState = aiState.get()
+
+  aiState.update({
+    ...currentState,
     messages: [
-      ...aiState.get().messages,
+      ...currentState.messages,
       {
         id: nanoid(),
         role: 'user',
-        content
+        content: message
       }
     ]
   })
@@ -5661,37 +5925,28 @@ async function submitUserMessage(content: string) {
   let textNode: undefined | React.ReactNode
 
   const openai = createOpenAI({
-    baseURL: process.env.OPENAI_BASE_URL || undefined
+    baseURL: baseUrl,
+    apiKey: 'kamiwaza_model'
   });
+
+  console.log(`Created OpenAI client with baseURL: ${baseUrl}`);
+
   const result = await streamUI({
-    model: openai('model'),
+    model: openai(modelName),
     initial: <SpinnerMessage />,
-    system: `\
-    You are a stock trading conversation bot and you can help users buy stocks, step by step.
-    You and the user can discuss stock prices and the user can adjust the amount of stocks they want to buy, or place an order, in the UI.
-
-    Messages inside [] means that it's a UI element or a user event. For example:
-    - "[Price of AAPL = 100]" means that an interface of the stock price of AAPL is shown to the user.
-    - "[User has changed the amount of AAPL to 10]" means that the user has changed the amount of AAPL to 10 in the UI.
-
-    If the user requests purchasing a stock, call \`show_stock_purchase_ui\` to show the purchase UI.
-    If the user just wants the price, call \`show_stock_price\` to show the price.
-    If you want to show trending stocks, call \`list_stocks\`.
-    If you want to show events, call \`get_events\`.
-    If the user wants to sell stock, or complete another impossible task, respond that you are a demo and cannot do that.
-
-    Besides that, you can also chat with users and do some calculations if needed.`,
+    system: `You are a helpful AI assistant.`,
     messages: [
-      ...aiState.get().messages.map((message: any) => ({
+      ...currentState.messages.map((message: any) => ({
         role: message.role,
         content: message.content,
         name: message.name
-      }))
+      })),
+      { role: 'user', content: message }
     ],
     text: ({ content, done, delta }) => {
       if (!textStream) {
         textStream = createStreamableValue('')
-        textNode = <BotMessage content={textStream.value} />
+        textNode = <BotMessage content={textStream.value} selectedModel={{ baseUrl, modelName }} />
       }
 
       if (done) {
@@ -5713,306 +5968,307 @@ async function submitUserMessage(content: string) {
 
       return textNode
     },
-    // tools: {
-    //   listStocks: {
-    //     description: 'List three imaginary stocks that are trending.',
-    //     parameters: z.object({
-    //       stocks: z.array(
-    //         z.object({
-    //           symbol: z.string().describe('The symbol of the stock'),
-    //           price: z.number().describe('The price of the stock'),
-    //           delta: z.number().describe('The change in price of the stock')
-    //         })
-    //       )
-    //     }),
-    //     generate: async function* ({ stocks }) {
-    //       yield (
-    //         <BotCard>
-    //           <StocksSkeleton />
-    //         </BotCard>
-    //       )
 
-    //       await sleep(1000)
-
-    //       const toolCallId = nanoid()
-
-    //       aiState.done({
-    //         ...aiState.get(),
-    //         messages: [
-    //           ...aiState.get().messages,
-    //           {
-    //             id: nanoid(),
-    //             role: 'assistant',
-    //             content: [
-    //               {
-    //                 type: 'tool-call',
-    //                 toolName: 'listStocks',
-    //                 toolCallId,
-    //                 args: { stocks }
-    //               }
-    //             ]
-    //           },
-    //           {
-    //             id: nanoid(),
-    //             role: 'tool',
-    //             content: [
-    //               {
-    //                 type: 'tool-result',
-    //                 toolName: 'listStocks',
-    //                 toolCallId,
-    //                 result: stocks
-    //               }
-    //             ]
-    //           }
-    //         ]
-    //       })
-
-    //       return (
-    //         <BotCard>
-    //           <Stocks props={stocks} />
-    //         </BotCard>
-    //       )
-    //     }
-    //   },
-    //   showStockPrice: {
-    //     description:
-    //       'Get the current stock price of a given stock or currency. Use this to show the price to the user.',
-    //     parameters: z.object({
-    //       symbol: z
-    //         .string()
-    //         .describe(
-    //           'The name or symbol of the stock or currency. e.g. DOGE/AAPL/USD.'
-    //         ),
-    //       price: z.number().describe('The price of the stock.'),
-    //       delta: z.number().describe('The change in price of the stock')
-    //     }),
-    //     generate: async function* ({ symbol, price, delta }) {
-    //       yield (
-    //         <BotCard>
-    //           <StockSkeleton />
-    //         </BotCard>
-    //       )
-
-    //       await sleep(1000)
-
-    //       const toolCallId = nanoid()
-
-    //       aiState.done({
-    //         ...aiState.get(),
-    //         messages: [
-    //           ...aiState.get().messages,
-    //           {
-    //             id: nanoid(),
-    //             role: 'assistant',
-    //             content: [
-    //               {
-    //                 type: 'tool-call',
-    //                 toolName: 'showStockPrice',
-    //                 toolCallId,
-    //                 args: { symbol, price, delta }
-    //               }
-    //             ]
-    //           },
-    //           {
-    //             id: nanoid(),
-    //             role: 'tool',
-    //             content: [
-    //               {
-    //                 type: 'tool-result',
-    //                 toolName: 'showStockPrice',
-    //                 toolCallId,
-    //                 result: { symbol, price, delta }
-    //               }
-    //             ]
-    //           }
-    //         ]
-    //       })
-
-    //       return (
-    //         <BotCard>
-    //           <Stock props={{ symbol, price, delta }} />
-    //         </BotCard>
-    //       )
-    //     }
-    //   },
-    //   showStockPurchase: {
-    //     description:
-    //       'Show price and the UI to purchase a stock or currency. Use this if the user wants to purchase a stock or currency.',
-    //     parameters: z.object({
-    //       symbol: z
-    //         .string()
-    //         .describe(
-    //           'The name or symbol of the stock or currency. e.g. DOGE/AAPL/USD.'
-    //         ),
-    //       price: z.number().describe('The price of the stock.'),
-    //       numberOfShares: z
-    //         .number()
-    //         .optional()
-    //         .describe(
-    //           'The **number of shares** for a stock or currency to purchase. Can be optional if the user did not specify it.'
-    //         )
-    //     }),
-    //     generate: async function* ({ symbol, price, numberOfShares = 100 }) {
-    //       const toolCallId = nanoid()
-
-    //       if (numberOfShares <= 0 || numberOfShares > 1000) {
-    //         aiState.done({
-    //           ...aiState.get(),
-    //           messages: [
-    //             ...aiState.get().messages,
-    //             {
-    //               id: nanoid(),
-    //               role: 'assistant',
-    //               content: [
-    //                 {
-    //                   type: 'tool-call',
-    //                   toolName: 'showStockPurchase',
-    //                   toolCallId,
-    //                   args: { symbol, price, numberOfShares }
-    //                 }
-    //               ]
-    //             },
-    //             {
-    //               id: nanoid(),
-    //               role: 'tool',
-    //               content: [
-    //                 {
-    //                   type: 'tool-result',
-    //                   toolName: 'showStockPurchase',
-    //                   toolCallId,
-    //                   result: {
-    //                     symbol,
-    //                     price,
-    //                     numberOfShares,
-    //                     status: 'expired'
-    //                   }
-    //                 }
-    //               ]
-    //             },
-    //             {
-    //               id: nanoid(),
-    //               role: 'system',
-    //               content: `[User has selected an invalid amount]`
-    //             }
-    //           ]
-    //         })
-
-    //         return <BotMessage content={'Invalid amount'} />
-    //       } else {
-    //         aiState.done({
-    //           ...aiState.get(),
-    //           messages: [
-    //             ...aiState.get().messages,
-    //             {
-    //               id: nanoid(),
-    //               role: 'assistant',
-    //               content: [
-    //                 {
-    //                   type: 'tool-call',
-    //                   toolName: 'showStockPurchase',
-    //                   toolCallId,
-    //                   args: { symbol, price, numberOfShares }
-    //                 }
-    //               ]
-    //             },
-    //             {
-    //               id: nanoid(),
-    //               role: 'tool',
-    //               content: [
-    //                 {
-    //                   type: 'tool-result',
-    //                   toolName: 'showStockPurchase',
-    //                   toolCallId,
-    //                   result: {
-    //                     symbol,
-    //                     price,
-    //                     numberOfShares
-    //                   }
-    //                 }
-    //               ]
-    //             }
-    //           ]
-    //         })
-
-    //         return (
-    //           <BotCard>
-    //             <Purchase
-    //               props={{
-    //                 numberOfShares,
-    //                 symbol,
-    //                 price: +price,
-    //                 status: 'requires_action'
-    //               }}
-    //             />
-    //           </BotCard>
-    //         )
-    //       }
-    //     }
-    //   },
-    //   getEvents: {
-    //     description:
-    //       'List funny imaginary events between user highlighted dates that describe stock activity.',
-    //     parameters: z.object({
-    //       events: z.array(
-    //         z.object({
-    //           date: z
-    //             .string()
-    //             .describe('The date of the event, in ISO-8601 format'),
-    //           headline: z.string().describe('The headline of the event'),
-    //           description: z.string().describe('The description of the event')
-    //         })
-    //       )
-    //     }),
-    //     generate: async function* ({ events }) {
-    //       yield (
-    //         <BotCard>
-    //           <EventsSkeleton />
-    //         </BotCard>
-    //       )
-
-    //       await sleep(1000)
-
-    //       const toolCallId = nanoid()
-
-    //       aiState.done({
-    //         ...aiState.get(),
-    //         messages: [
-    //           ...aiState.get().messages,
-    //           {
-    //             id: nanoid(),
-    //             role: 'assistant',
-    //             content: [
-    //               {
-    //                 type: 'tool-call',
-    //                 toolName: 'getEvents',
-    //                 toolCallId,
-    //                 args: { events }
-    //               }
-    //             ]
-    //           },
-    //           {
-    //             id: nanoid(),
-    //             role: 'tool',
-    //             content: [
-    //               {
-    //                 type: 'tool-result',
-    //                 toolName: 'getEvents',
-    //                 toolCallId,
-    //                 result: events
-    //               }
-    //             ]
-    //           }
-    //         ]
-    //       })
-
-    //       return (
-    //         <BotCard>
-    //           <Events props={events} />
-    //         </BotCard>
-    //       )
-    //     }
-    //   }
-    // }
+//    tools: {
+//      listStocks: {
+//        description: 'List three imaginary stocks that are trending.',
+//        parameters: z.object({
+//          stocks: z.array(
+//            z.object({
+//              symbol: z.string().describe('The symbol of the stock'),
+//              price: z.number().describe('The price of the stock'),
+//              delta: z.number().describe('The change in price of the stock')
+//            })
+//          )
+//        }),
+//        generate: async function* ({ stocks }) {
+//          yield (
+//            <BotCard>
+//              <StocksSkeleton />
+//            </BotCard>
+//          )
+//
+//          await sleep(1000)
+//
+//          const toolCallId = nanoid()
+//
+//          aiState.done({
+//            ...aiState.get(),
+//            messages: [
+//              ...aiState.get().messages,
+//              {
+//                id: nanoid(),
+//                role: 'assistant',
+//                content: [
+//                  {
+//                    type: 'tool-call',
+//                    toolName: 'listStocks',
+//                    toolCallId,
+//                    args: { stocks }
+//                  }
+//                ]
+//              },
+//              {
+//                id: nanoid(),
+//                role: 'tool',
+//                content: [
+//                  {
+//                    type: 'tool-result',
+//                    toolName: 'listStocks',
+//                    toolCallId,
+//                    result: stocks
+//                  }
+//                ]
+//              }
+//            ]
+//          })
+//
+//          return (
+//            <BotCard>
+//              <Stocks props={stocks} />
+//            </BotCard>
+//          )
+//        }
+//      },
+//      showStockPrice: {
+//        description:
+//          'Get the current stock price of a given stock or currency. Use this to show the price to the user.',
+//        parameters: z.object({
+//          symbol: z
+//            .string()
+//            .describe(
+//              'The name or symbol of the stock or currency. e.g. DOGE/AAPL/USD.'
+//            ),
+//          price: z.number().describe('The price of the stock.'),
+//          delta: z.number().describe('The change in price of the stock')
+//        }),
+//        generate: async function* ({ symbol, price, delta }) {
+//          yield (
+//            <BotCard>
+//              <StockSkeleton />
+//            </BotCard>
+//          )
+//
+//          await sleep(1000)
+//
+//          const toolCallId = nanoid()
+//
+//          aiState.done({
+//            ...aiState.get(),
+//            messages: [
+//              ...aiState.get().messages,
+//              {
+//                id: nanoid(),
+//                role: 'assistant',
+//                content: [
+//                  {
+//                    type: 'tool-call',
+//                    toolName: 'showStockPrice',
+//                    toolCallId,
+//                    args: { symbol, price, delta }
+//                  }
+//                ]
+//              },
+//              {
+//                id: nanoid(),
+//                role: 'tool',
+//                content: [
+//                  {
+//                    type: 'tool-result',
+//                    toolName: 'showStockPrice',
+//                    toolCallId,
+//                    result: { symbol, price, delta }
+//                  }
+//                ]
+//              }
+//            ]
+//          })
+//
+//          return (
+//            <BotCard>
+//              <Stock props={{ symbol, price, delta }} />
+//            </BotCard>
+//          )
+//        }
+//      },
+//      showStockPurchase: {
+//        description:
+//          'Show price and the UI to purchase a stock or currency. Use this if the user wants to purchase a stock or currency.',
+//        parameters: z.object({
+//          symbol: z
+//            .string()
+//            .describe(
+//              'The name or symbol of the stock or currency. e.g. DOGE/AAPL/USD.'
+//            ),
+//          price: z.number().describe('The price of the stock.'),
+//          numberOfShares: z
+//            .number()
+//            .optional()
+//            .describe(
+//              'The **number of shares** for a stock or currency to purchase. Can be optional if the user did not specify it.'
+//            )
+//        }),
+//        generate: async function* ({ symbol, price, numberOfShares = 100 }) {
+//          const toolCallId = nanoid()
+//
+//          if (numberOfShares <= 0 || numberOfShares > 1000) {
+//            aiState.done({
+//              ...aiState.get(),
+//              messages: [
+//                ...aiState.get().messages,
+//                {
+//                  id: nanoid(),
+//                  role: 'assistant',
+//                  content: [
+//                    {
+//                      type: 'tool-call',
+//                      toolName: 'showStockPurchase',
+//                      toolCallId,
+//                      args: { symbol, price, numberOfShares }
+//                    }
+//                  ]
+//                },
+//                {
+//                  id: nanoid(),
+//                  role: 'tool',
+//                  content: [
+//                    {
+//                      type: 'tool-result',
+//                      toolName: 'showStockPurchase',
+//                      toolCallId,
+//                      result: {
+//                        symbol,
+//                        price,
+//                        numberOfShares,
+//                        status: 'expired'
+//                      }
+//                    }
+//                  ]
+//                },
+//                {
+//                  id: nanoid(),
+//                  role: 'system',
+//                  content: `[User has selected an invalid amount]`
+//                }
+//              ]
+//            })
+//
+//            return <BotMessage content={'Invalid amount'} />
+//          } else {
+//            aiState.done({
+//              ...aiState.get(),
+//              messages: [
+//                ...aiState.get().messages,
+//                {
+//                  id: nanoid(),
+//                  role: 'assistant',
+//                  content: [
+//                    {
+//                      type: 'tool-call',
+//                      toolName: 'showStockPurchase',
+//                      toolCallId,
+//                      args: { symbol, price, numberOfShares }
+//                    }
+//                  ]
+//                },
+//                {
+//                  id: nanoid(),
+//                  role: 'tool',
+//                  content: [
+//                    {
+//                      type: 'tool-result',
+//                      toolName: 'showStockPurchase',
+//                      toolCallId,
+//                      result: {
+//                        symbol,
+//                        price,
+//                        numberOfShares
+//                      }
+//                    }
+//                  ]
+//                }
+//              ]
+//            })
+//
+//            return (
+//              <BotCard>
+//                <Purchase
+//                  props={{
+//                    numberOfShares,
+//                    symbol,
+//                    price: +price,
+//                    status: 'requires_action'
+//                  }}
+//                />
+//              </BotCard>
+//            )
+//          }
+//        }
+//      },
+//      getEvents: {
+//        description:
+//          'List funny imaginary events between user highlighted dates that describe stock activity.',
+//        parameters: z.object({
+//          events: z.array(
+//            z.object({
+//              date: z
+//                .string()
+//                .describe('The date of the event, in ISO-8601 format'),
+//              headline: z.string().describe('The headline of the event'),
+//              description: z.string().describe('The description of the event')
+//            })
+//          )
+//        }),
+//        generate: async function* ({ events }) {
+//          yield (
+//            <BotCard>
+//              <EventsSkeleton />
+//            </BotCard>
+//          )
+//
+//          await sleep(1000)
+//
+//          const toolCallId = nanoid()
+//
+//          aiState.done({
+//            ...aiState.get(),
+//            messages: [
+//              ...aiState.get().messages,
+//              {
+//                id: nanoid(),
+//                role: 'assistant',
+//                content: [
+//                  {
+//                    type: 'tool-call',
+//                    toolName: 'getEvents',
+//                    toolCallId,
+//                    args: { events }
+//                  }
+//                ]
+//              },
+//              {
+//                id: nanoid(),
+//                role: 'tool',
+//                content: [
+//                  {
+//                    type: 'tool-result',
+//                    toolName: 'getEvents',
+//                    toolCallId,
+//                    result: events
+//                  }
+//                ]
+//              }
+//            ]
+//          })
+//
+//          return (
+//            <BotCard>
+//              <Events props={events} />
+//            </BotCard>
+//          )
+//        }
+//      }
+//    }
   })
 
   return {
@@ -6024,7 +6280,13 @@ async function submitUserMessage(content: string) {
 export type AIState = {
   chatId: string
   messages: Message[]
+  selectedModel?: KamiwazaModel
 }
+
+type KamiwazaModel = {
+  baseUrl: string;
+  modelName: string;
+};
 
 export type UIState = {
   id: string
@@ -6034,10 +6296,11 @@ export type UIState = {
 export const AI = createAI<AIState, UIState>({
   actions: {
     submitUserMessage,
-    confirmPurchase
+    confirmPurchase,
+    selectModel
   },
   initialUIState: [],
-  initialAIState: { chatId: nanoid(), messages: [] },
+  initialAIState: { chatId: nanoid(), messages: [], selectedModel: undefined },
   onGetUIState: async () => {
     'use server'
 

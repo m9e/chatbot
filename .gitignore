@@ -38,3 +38,4 @@ yarn-error.log*
 .env*.local
 package-lock.json
 code.txt
+code.txt
