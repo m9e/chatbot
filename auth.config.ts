@@ -10,11 +10,14 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user
       const isOnLoginPage = nextUrl.pathname.startsWith('/login')
       const isOnSignupPage = false //nextUrl.pathname.startsWith('/signup')
+      const allowAnonymous = process.env.ALLOW_ANONYMOUS === 'true'
 
       if (isLoggedIn) {
         if (isOnLoginPage || isOnSignupPage) {
           return Response.redirect(new URL('/', nextUrl))
         }
+      } else if (!allowAnonymous && !isOnLoginPage && !isOnSignupPage) {
+        return Response.redirect(new URL('/login', nextUrl))
       }
 
       return true

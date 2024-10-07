@@ -20,12 +20,16 @@ import { verifyToken, UserData } from '@/lib/kamiwazaApi'
 function UserOrLogin() {
   const [user, setUser] = useState<UserData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [allowAnonymous, setAllowAnonymous] = useState(false)
 
   useEffect(() => {
     async function checkUser() {
       try {
         const userData = await verifyToken()
         setUser(userData)
+        const response = await fetch('/api/allow-anonymous')
+        const { allowAnonymous } = await response.json()
+        setAllowAnonymous(allowAnonymous)
       } catch (error) {
         console.error('Error verifying token:', error)
       } finally {
@@ -54,13 +58,20 @@ function UserOrLogin() {
           </div>
         </>
       ) : (
-        <>
-          <div className="flex items-center">
+        <div className="flex items-center">
+          {allowAnonymous ? (
+            <>
+              <span className="ml-2">Anonymous User</span>
+              <Button variant="link" asChild className="ml-4">
+                <Link href="/login">Login to Kamiwaza</Link>
+              </Button>
+            </>
+          ) : (
             <Button variant="link" asChild className="-ml-2">
               <Link href="/login">Login to Kamiwaza</Link>
             </Button>
-          </div>
-        </>
+          )}
+        </div>
       )}
     </>
   )

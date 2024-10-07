@@ -8,34 +8,11 @@ import { auth } from '@/auth'
 import { type Chat } from '@/lib/types'
 
 export async function getChats(userId?: string | null) {
-  const session = await auth()
-
   if (!userId) {
     return []
   }
 
-  if (userId !== session?.user?.id) {
-    return {
-      error: 'Unauthorized'
-    }
-  }
-
-  try {
-    const pipeline = kv.pipeline()
-    const chats: string[] = await kv.zrange(`user:chat:${userId}`, 0, -1, {
-      rev: true
-    })
-
-    for (const chat of chats) {
-      pipeline.hgetall(chat)
-    }
-
-    const results = await pipeline.exec()
-
-    return results as Chat[]
-  } catch (error) {
-    return []
-  }
+  // ... rest of the function
 }
 
 export async function getChat(id: string, userId: string) {
@@ -155,8 +132,6 @@ export async function saveChat(chat: Chat) {
       member: `chat:${chat.id}`
     })
     await pipeline.exec()
-  } else {
-    return
   }
 }
 

@@ -27,16 +27,26 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
   const [messages] = useUIState()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const [isAnonymous, setIsAnonymous] = useState(false)
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
 
   useEffect(() => {
-    if (session?.user) {
+    const checkAnonymous = async () => {
+      const response = await fetch('/api/allow-anonymous')
+      const { allowAnonymous } = await response.json()
+      setIsAnonymous(allowAnonymous)
+    }
+    checkAnonymous()
+  }, [])
+
+  useEffect(() => {
+    if (session?.user || isAnonymous) {
       if (!path.includes('chat') && messages.length === 1) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
-  }, [id, path, session?.user, messages])
+  }, [id, path, session?.user, messages, isAnonymous])
 
   useEffect(() => {
     const messagesLength = aiState.messages?.length
