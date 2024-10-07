@@ -11,6 +11,7 @@ services:
       - KV_REST_API_TOKEN=dummy_token
       - KV_REST_API_READ_ONLY_TOKEN=dummy_readonly_token
       - KAMIWAZA_API_URI=http://kamiwaza-host:port
+      - NEXT_PUBLIC_KAMIWAZA_URI=https://kamiwaza-host
     depends_on:
       - redis
 

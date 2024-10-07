@@ -15,6 +15,8 @@ interface Deployment {
  * @returns An array of Deployment objects representing available models.
  */
 export async function getKamiwazaDeployments() {
+  let deployments: Deployment[] = [];
+
   try {
     const kamiwazaApiUri = process.env.KAMIWAZA_API_URI
     if (!kamiwazaApiUri) {
@@ -30,8 +32,16 @@ export async function getKamiwazaDeployments() {
     }
 
     const data = await response.json()
-    // Filter to only include deployed models
-    const filteredDeployments = data.filter((d: Deployment) => d.status === 'DEPLOYED')
+    // Filter to include deployed models and set localhost for empty/null host_names
+    const filteredDeployments = data
+      .filter((d: Deployment) => d.status === 'DEPLOYED')
+      .map((d: Deployment) => ({
+        ...d,
+        instances: d.instances.map(instance => ({
+          ...instance,
+          host_name: instance.host_name || 'localhost'
+        }))
+      }));
 
     revalidatePath('/') // Revalidate the home page to reflect any changes in available models
 

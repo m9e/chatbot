@@ -55,12 +55,7 @@ function UserOrLogin() {
         </>
       ) : (
         <>
-          <Link href="/new" rel="nofollow">
-            <IconNextChat className="size-6 mr-2 dark:hidden" inverted />
-            <IconNextChat className="hidden size-6 mr-2 dark:block" />
-          </Link>
           <div className="flex items-center">
-            <IconSeparator className="size-6 text-muted-foreground/50" />
             <Button variant="link" asChild className="-ml-2">
               <Link href="/login">Login to Kamiwaza</Link>
             </Button>
@@ -80,25 +75,12 @@ export function Header() {
         </React.Suspense>
       </div>
       <div className="flex items-center justify-end space-x-2">
-        <a
-          target="_blank"
-          href="https://github.com/vercel/nextjs-ai-chatbot/"
-          rel="noopener noreferrer"
-          className={cn(buttonVariants({ variant: 'outline' }))}
-        >
-          <IconGitHub />
-          <span className="hidden ml-2 md:flex">GitHub</span>
-        </a>
-        <a
-          href="https://vercel.com/templates/Next.js/nextjs-ai-chatbot"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(buttonVariants())}
-        >
-          <IconVercel className="mr-2" />
-          <span className="hidden sm:block">Deploy to Vercel</span>
-          <span className="sm:hidden">Deploy</span>
-        </a>
+          {process.env.NEXT_PUBLIC_KAMIWAZA_URI ? (
+            <a href={process.env.NEXT_PUBLIC_KAMIWAZA_URI} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center">
+              <span className="mr-1">→</span> {/* Little arrow added */}
+              Kamiwaza Dashboard
+            </a>
+        ) : null}
       </div>
     </header>
   )

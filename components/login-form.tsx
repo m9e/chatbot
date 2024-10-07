@@ -110,12 +110,6 @@ export default function LoginForm() {
         <LoginButton />
       </div>
 
-      <Link
-        href="/signup"
-        className="flex flex-row gap-1 text-sm text-zinc-400"
-      >
-        No account yet? <div className="font-semibold underline">Sign up</div>
-      </Link>
     </form>
   )
 }

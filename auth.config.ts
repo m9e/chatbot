@@ -4,13 +4,12 @@ export const authConfig = {
   secret: process.env.AUTH_SECRET,
   pages: {
     signIn: '/login',
-    newUser: '/signup'
   },
   callbacks: {
     async authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
       const isOnLoginPage = nextUrl.pathname.startsWith('/login')
-      const isOnSignupPage = nextUrl.pathname.startsWith('/signup')
+      const isOnSignupPage = false //nextUrl.pathname.startsWith('/signup')
 
       if (isLoggedIn) {
         if (isOnLoginPage || isOnSignupPage) {
