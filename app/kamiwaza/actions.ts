@@ -19,19 +19,23 @@ export async function getKamiwazaDeployments() {
 
   try {
     const kamiwazaApiUri = process.env.KAMIWAZA_API_URI
+    console.log('Kamiwaza API URI:', kamiwazaApiUri);
     if (!kamiwazaApiUri) {
       throw new Error('KAMIWAZA_API_URI is not defined')
     }
 
+    console.log('Fetching deployments from:', `${kamiwazaApiUri}/api/serving/deployments`);
     const response = await fetch(`${kamiwazaApiUri}/api/serving/deployments`, {
       next: { revalidate: 10 } // Revalidate every 10 seconds to ensure up-to-date deployment information
     })
     
     if (!response.ok) {
+      console.error('Failed to fetch deployments. Status:', response.status);
       throw new Error('Failed to fetch deployments')
     }
 
     const data = await response.json()
+    console.log('Fetched deployments:', data);
     // Filter to include deployed models and set localhost for empty/null host_names
     const filteredDeployments = data
       .filter((d: Deployment) => d.status === 'DEPLOYED')

@@ -70,8 +70,7 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
 
   const handleModelSelect = (modelInfo: ModelInfo | null) => {
     setSelectedModel(modelInfo)
-    // Here you can add any additional logic needed when a model is selected
-    // For example, you might want to update the AI state or reset the chat
+    // You might want to add additional logic here, such as resetting the chat or updating the UI
   }
 
   return (
