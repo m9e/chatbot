@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from 'next-auth'
+import { v4 as uuidv4 } from 'uuid'
 
 export const authConfig = {
   secret: process.env.AUTH_SECRET,
@@ -24,19 +25,19 @@ export const authConfig = {
     },
     async jwt({ token, user }) {
       if (user) {
-        token = { ...token, id: user.id }
+        token = { ...token, id: user.id, isAnonymous: false }
+      } else if (!token.sub) {
+        // Create an anonymous token if it doesn't exist
+        token = { ...token, id: uuidv4(), isAnonymous: true }
       }
-
       return token
     },
     async session({ session, token }) {
-      if (token) {
-        const { id } = token as { id: string }
-        const { user } = session
-
-        session = { ...session, user: { ...user, id } }
+      session.user = {
+        ...session.user,
+        id: token.id as string,
+        isAnonymous: token.isAnonymous as boolean
       }
-
       return session
     }
   },

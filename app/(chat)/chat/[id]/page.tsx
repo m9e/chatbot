@@ -37,15 +37,18 @@ export default async function ChatPage({ params }: ChatPageProps) {
   const session = (await auth()) as Session
   const missingKeys = await getMissingKeys()
 
-  if (!session?.user) {
+  if (!session?.user && !process.env.ALLOW_ANONYMOUS) {
     redirect(`/login?next=/chat/${params.id}`)
   }
 
-  const userId = session.user.id as string
+  const userId = session?.user?.id ? session.user.id as string : 'anonymous'
   const chat = await getChat(params.id, userId)
+  const isAnonymous = session?.user?.isAnonymous ? session.user.isAnonymous : true
 
   if (!chat || 'error' in chat) {
-    redirect('/')
+    if (!isAnonymous) {
+      redirect('/')
+    }
   } else {
     if (chat?.userId !== session?.user?.id) {
       notFound()

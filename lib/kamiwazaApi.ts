@@ -66,7 +66,7 @@ export async function getCurrentUser(): Promise<UserData | null> {
   }
 }
 
-interface UserData {
+export interface UserData {
   id: string;
   username: string;
   email: string;

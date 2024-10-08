@@ -27,22 +27,25 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
   const [messages] = useUIState()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const [isAnonymous, setIsAnonymous] = useState(false)
+  const isAnonymous = session?.user?.isAnonymous ?? true
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
+  const userId = session?.user?.id || 'anonymous';
 
   useEffect(() => {
     const checkAnonymous = async () => {
       const response = await fetch('/api/allow-anonymous')
       const { allowAnonymous } = await response.json()
-      setIsAnonymous(allowAnonymous)
+      if (!allowAnonymous && isAnonymous) {
+        router.push('/login')
+      }
     }
     checkAnonymous()
-  }, [])
+  }, [isAnonymous, router])
 
   useEffect(() => {
     if (session?.user || isAnonymous) {
-      if (!path.includes('chat') && messages.length === 1) {
+      if (!path.includes('chat') && messages.length === 1 && !isAnonymous) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
@@ -70,8 +73,9 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
 
   const handleModelSelect = (modelInfo: ModelInfo | null) => {
     setSelectedModel(modelInfo)
-    // You might want to add additional logic here, such as resetting the chat or updating the UI
   }
+
+  console.log('Chat messages:', messages);
 
   return (
     <div

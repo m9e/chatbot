@@ -11,42 +11,45 @@ export const config = {
 
 // auth.config.ts 
 import type { NextAuthConfig } from 'next-auth'
+import { v4 as uuidv4 } from 'uuid'
 
 export const authConfig = {
   secret: process.env.AUTH_SECRET,
   pages: {
     signIn: '/login',
-    newUser: '/signup'
   },
   callbacks: {
     async authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
       const isOnLoginPage = nextUrl.pathname.startsWith('/login')
-      const isOnSignupPage = nextUrl.pathname.startsWith('/signup')
+      const isOnSignupPage = false //nextUrl.pathname.startsWith('/signup')
+      const allowAnonymous = process.env.ALLOW_ANONYMOUS === 'true'
 
       if (isLoggedIn) {
         if (isOnLoginPage || isOnSignupPage) {
           return Response.redirect(new URL('/', nextUrl))
         }
+      } else if (!allowAnonymous && !isOnLoginPage && !isOnSignupPage) {
+        return Response.redirect(new URL('/login', nextUrl))
       }
 
       return true
     },
     async jwt({ token, user }) {
       if (user) {
-        token = { ...token, id: user.id }
+        token = { ...token, id: user.id, isAnonymous: false }
+      } else if (!token.sub) {
+        // Create an anonymous token if it doesn't exist
+        token = { ...token, id: uuidv4(), isAnonymous: true }
       }
-
       return token
     },
     async session({ session, token }) {
-      if (token) {
-        const { id } = token as { id: string }
-        const { user } = session
-
-        session = { ...session, user: { ...user, id } }
+      session.user = {
+        ...session.user,
+        id: token.id as string,
+        isAnonymous: token.isAnonymous as boolean
       }
-
       return session
     }
   },
@@ -192,6 +195,7 @@ module.exports = {
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.30",
     "geist": "^1.3.1",
+    "ioredis": "^5.4.1",
     "nanoid": "^5.0.7",
     "next": "14.2.6",
     "next-auth": "5.0.0-beta.4",
@@ -206,6 +210,7 @@ module.exports = {
     "remark-gfm": "^3.0.1",
     "remark-math": "^5.1.1",
     "sonner": "^1.5.0",
+    "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -214,6 +219,7 @@ module.exports = {
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
@@ -351,6 +357,7 @@ import { auth } from '@/auth'
 import { type Chat } from '@/lib/types'
 
 export async function getChats(userId?: string | null) {
+
   const session = await auth()
 
   if (!userId) {
@@ -490,7 +497,7 @@ export async function shareChat(id: string) {
 export async function saveChat(chat: Chat) {
   const session = await auth()
 
-  if (session && session.user) {
+  if (session && session.user && !session.user.isAnonymous) {
     const pipeline = kv.pipeline()
     pipeline.hmset(`chat:${chat.id}`, chat)
     pipeline.zadd(`user:chat:${chat.userId}`, {
@@ -498,8 +505,6 @@ export async function saveChat(chat: Chat) {
       member: `chat:${chat.id}`
     })
     await pipeline.exec()
-  } else {
-    return
   }
 }
 
@@ -531,10 +536,10 @@ export const metadata = {
     ? new URL(`https://${process.env.VERCEL_URL}`)
     : undefined,
   title: {
-    default: 'Next.js AI Chatbot',
-    template: `%s - Next.js AI Chatbot`
+    default: 'Kamiwaza EnterpriseGPT AI Chatbot',
+    template: `%s - Kamiwaza EnterpriseGPT AI Chatbot`
   },
-  description: 'An AI-powered chatbot template built with Next.js and Vercel.',
+  description: 'Open-source AI chatbot built by Kamiwaza on top of Vercel\'s ai-chatbot.',
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon-16x16.png',
@@ -735,23 +740,37 @@ interface Deployment {
  * @returns An array of Deployment objects representing available models.
  */
 export async function getKamiwazaDeployments() {
+  let deployments: Deployment[] = [];
+
   try {
     const kamiwazaApiUri = process.env.KAMIWAZA_API_URI
+    console.log('Kamiwaza API URI:', kamiwazaApiUri);
     if (!kamiwazaApiUri) {
       throw new Error('KAMIWAZA_API_URI is not defined')
     }
 
+    console.log('Fetching deployments from:', `${kamiwazaApiUri}/api/serving/deployments`);
     const response = await fetch(`${kamiwazaApiUri}/api/serving/deployments`, {
       next: { revalidate: 10 } // Revalidate every 10 seconds to ensure up-to-date deployment information
     })
     
     if (!response.ok) {
+      console.error('Failed to fetch deployments. Status:', response.status);
       throw new Error('Failed to fetch deployments')
     }
 
     const data = await response.json()
-    // Filter to only include deployed models
-    const filteredDeployments = data.filter((d: Deployment) => d.status === 'DEPLOYED')
+    console.log('Fetched deployments:', data);
+    // Filter to include deployed models and set localhost for empty/null host_names
+    const filteredDeployments = data
+      .filter((d: Deployment) => d.status === 'DEPLOYED')
+      .map((d: Deployment) => ({
+        ...d,
+        instances: d.instances.map(instance => ({
+          ...instance,
+          host_name: instance.host_name || 'localhost'
+        }))
+      }));
 
     revalidatePath('/') // Revalidate the home page to reflect any changes in available models
 
@@ -794,6 +813,27 @@ export default async function NewPage() {
 }
 
 
+// app/api/fixed-model/route.ts 
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+  const fixedModelUri = process.env.FIXED_MODEL_URI
+  const fixedModelName = process.env.FIXED_MODEL_NAME
+
+  return NextResponse.json({
+    uri: fixedModelUri,
+    name: fixedModelName
+  })
+}
+
+// app/api/allow-anonymous/route.ts 
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+  const allowAnonymous = process.env.ALLOW_ANONYMOUS === 'true'
+  return NextResponse.json({ allowAnonymous })
+}
+
 // app/(chat)/layout.tsx 
 import { SidebarDesktop } from '@/components/sidebar-desktop'
 
@@ -820,7 +860,7 @@ import { Session } from '@/lib/types'
 import { getMissingKeys } from '@/app/actions'
 
 export const metadata = {
-  title: 'Next.js AI Chatbot'
+  title: 'Kamiwaza EnterpriseGPT AI Chatbot'
 }
 
 export default async function IndexPage() {
@@ -876,15 +916,18 @@ export default async function ChatPage({ params }: ChatPageProps) {
   const session = (await auth()) as Session
   const missingKeys = await getMissingKeys()
 
-  if (!session?.user) {
+  if (!session?.user && !process.env.ALLOW_ANONYMOUS) {
     redirect(`/login?next=/chat/${params.id}`)
   }
 
-  const userId = session.user.id as string
+  const userId = session?.user?.id ? session.user.id as string : 'anonymous'
   const chat = await getChat(params.id, userId)
+  const isAnonymous = session?.user?.isAnonymous ? session.user.isAnonymous : true
 
   if (!chat || 'error' in chat) {
-    redirect('/')
+    if (!isAnonymous) {
+      redirect('/')
+    }
   } else {
     if (chat?.userId !== session?.user?.id) {
       notFound()
@@ -943,12 +986,20 @@ export async function authenticate(
       })
 
     if (parsedCredentials.success) {
-      await signIn('credentials', {
+      const result = await signIn('credentials', {
         email,
         password,
         redirect: false
       })
 
+      if (result?.error) {
+        return {
+          type: 'error',
+          resultCode: ResultCode.InvalidCredentials
+        }
+      }
+
+      // The session will be automatically updated with the new non-anonymous user data
       return {
         type: 'success',
         resultCode: ResultCode.UserLoggedIn
@@ -987,7 +1038,7 @@ import { redirect } from 'next/navigation'
 export default async function LoginPage() {
   const session = (await auth()) as Session
 
-  if (session) {
+  if (session && !session.user.isAnonymous) {
     redirect('/')
   }
 
@@ -997,7 +1048,6 @@ export default async function LoginPage() {
     </main>
   )
 }
-
 
 // app/share/[id]/page.tsx 
 import { type Metadata } from 'next'
@@ -1131,6 +1181,34 @@ export const MemoizedReactMarkdown: FC<Options> = memo(
     prevProps.className === nextProps.className
 )
 
+
+// components/KamiwazaAuthCheck.tsx 
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { whoami } from '@/utils/kamiwazaApi'
+
+export default function KamiwazaAuthCheck() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkKamiwazaAuth = async () => {
+      try {
+        const userData = await whoami()
+        if (userData) {
+          router.push('/')
+        }
+      } catch (error) {
+        console.error('Error checking Kamiwaza authentication:', error)
+      }
+    }
+
+    checkKamiwazaAuth()
+  }, [router])
+
+  return null // This component doesn't render anything
+}
 
 // components/prompt-form.tsx 
 'use client'
@@ -1291,6 +1369,7 @@ interface ModelSelectorProps {
 export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [fixedModel, setFixedModel] = useState<ModelInfo | null>(null)
 
   useEffect(() => {
     const fetchDeployments = async () => {
@@ -1298,9 +1377,21 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
         const fetchedDeployments = await getKamiwazaDeployments()
         setDeployments(fetchedDeployments)
 
-        if (fetchedDeployments.length === 1) {
-          const deployment = fetchedDeployments[0]
-          handleModelChange(deployment.m_name)
+        // Fetch fixed model information
+        const response = await fetch('/api/fixed-model')
+        const fixedModelData = await response.json()
+        if (fixedModelData.uri && fixedModelData.name) {
+          setFixedModel({
+            baseUrl: fixedModelData.uri,
+            modelName: fixedModelData.name
+          })
+        }
+
+        // Select fixed model by default if available, otherwise select first deployment
+        if (fixedModelData.uri && fixedModelData.name) {
+          handleModelChange(fixedModelData.name)
+        } else if (fetchedDeployments.length > 0) {
+          handleModelChange(fetchedDeployments[0].m_name)
         }
       } catch (error) {
         console.error('Failed to fetch deployments:', error)
@@ -1311,17 +1402,22 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   }, [])
 
   const handleModelChange = async (modelName: string) => {
-    const selectedDeployment = deployments.find(d => d.m_name === modelName)
-    if (selectedDeployment) {
-      const baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
-      await selectKamiwazaModel(baseUrl, modelName)
+    if (fixedModel && modelName === fixedModel.modelName) {
       setSelectedModel(modelName)
-      onModelSelect({ baseUrl, modelName })
-      console.log('Model selected:', { baseUrl, modelName });  // Add this line
+      onModelSelect(fixedModel)
+    } else {
+      const selectedDeployment = deployments.find(d => d.m_name === modelName)
+      if (selectedDeployment) {
+        const baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
+        await selectKamiwazaModel(baseUrl, modelName)
+        setSelectedModel(modelName)
+        onModelSelect({ baseUrl, modelName })
+      }
     }
+    console.log('Model selected:', { modelName });
   }
 
-  if (deployments.length === 0) {
+  if (deployments.length === 0 && !fixedModel) {
     return null
   }
 
@@ -1331,6 +1427,11 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
         <SelectValue placeholder="Select a model" />
       </SelectTrigger>
       <SelectContent>
+        {fixedModel && (
+          <SelectItem key={fixedModel.modelName} value={fixedModel.modelName}>
+            {fixedModel.modelName} (Fixed)
+          </SelectItem>
+        )}
         {deployments.map(deployment => (
           <SelectItem key={deployment.m_name} value={deployment.m_name}>
             {deployment.m_name}
@@ -1765,8 +1866,8 @@ export function FooterText({ className, ...props }: React.ComponentProps<'p'>) {
       <ExternalLink href="https://nextjs.org">Next.js</ExternalLink> and{' '}
       <ExternalLink href="https://github.com/vercel/ai">
         Vercel AI SDK
-      </ExternalLink>
-      .
+      </ExternalLink> and Powered By {' '}
+      <ExternalLink href="https://kamiwaza.ai">Kamiwaza</ExternalLink>.
     </p>
   )
 }
@@ -1870,8 +1971,11 @@ export async function ChatHistory({ userId }: ChatHistoryProps) {
 
 
 // components/user-menu.tsx 
-import { type Session } from '@/lib/types'
+"use client"
 
+// components/user-menu.tsx
+
+import { type UserData } from '@/lib/kamiwazaApi'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -1880,27 +1984,49 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { signOut } from '@/auth'
+import { useRouter } from 'next/navigation'
 
 export interface UserMenuProps {
-  user: Session['user']
+  user: UserData
 }
 
 function getUserInitials(name: string) {
+  if (name === 'Anonymous User') {
+    return '??'
+  }
   const [firstName, lastName] = name.split(' ')
   return lastName ? `${firstName[0]}${lastName[0]}` : firstName.slice(0, 2)
 }
 
 export function UserMenu({ user }: UserMenuProps) {
+  const router = useRouter()
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
+    router.push('/login')
+  }
+
+  if (!user || user.username === 'Anonymous User') {
+    return (
+      <Button variant="ghost" className="pl-0" onClick={() => router.push('/login')}>
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/50 text-xs font-medium uppercase text-muted-foreground">
+          ??
+        </div>
+        <span className="ml-2 hidden md:block">Log In</span>
+      </Button>
+    );
+  }
+
   return (
     <div className="flex items-center justify-between">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="pl-0">
             <div className="flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-muted/50 text-xs font-medium uppercase text-muted-foreground">
-              {getUserInitials(user.email)}
+              {getUserInitials(user.full_name || user.username || 'Anonymous User')}
             </div>
-            <span className="ml-2 hidden md:block">{user.email}</span>
+            <span className="ml-2 hidden md:block">{user.username}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent sideOffset={8} align="start" className="w-fit">
@@ -1908,22 +2034,14 @@ export function UserMenu({ user }: UserMenuProps) {
             <div className="text-xs text-zinc-500">{user.email}</div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <form
-            action={async () => {
-              'use server'
-              await signOut()
-            }}
-          >
-            <button className=" relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none transition-colors hover:bg-red-500 hover:text-white focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
-              Sign Out
-            </button>
-          </form>
+          <DropdownMenuItem onClick={handleLogout}>
+            Log Out of Kamiwaza
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   )
 }
-
 
 // components/empty-screen.tsx 
 import { UseChatHelpers } from 'ai/react'
@@ -1937,10 +2055,14 @@ export function EmptyScreen() {
     <div className="mx-auto max-w-2xl px-4">
       <div className="flex flex-col gap-2 rounded-lg border bg-background p-8">
         <h1 className="text-lg font-semibold">
-          Welcome to Next.js AI Chatbot!
+          Welcome to Kamiwaza PrivateGPT Chat!
+        <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400 mt-2 mb-4">
+          WARNING: This system is for authorized users only. Unauthorized access is prohibited and may be subject to legal action. All activities are monitored and logged.
+        </p>
+
         </h1>
         <p className="leading-normal text-muted-foreground">
-          This is an open source AI chatbot app template built with{' '}
+          This is an open-source AI chatbot app built by Kamiwaza on top of Vercel's ai-chatbot. It leverages{' '}
           <ExternalLink href="https://nextjs.org">Next.js</ExternalLink>, the{' '}
           <ExternalLink href="https://sdk.vercel.ai">
             Vercel AI SDK
@@ -1952,13 +2074,12 @@ export function EmptyScreen() {
           .
         </p>
         <p className="leading-normal text-muted-foreground">
-          It uses{' '}
-          <ExternalLink href="https://vercel.com/blog/ai-sdk-3-generative-ui">
-            React Server Components
-          </ExternalLink>{' '}
-          to combine text with generative UI as output of the LLM. The UI state
-          is synced through the SDK so the model is aware of your interactions
-          as they happen.
+          Powered by the{' '}
+          <ExternalLink href="https://kamiwaza.ai">
+            Kamiwaza Enterprise AI Platform
+          </ExternalLink>
+          , this chatbot demonstrates the capabilities of combining text with generative UI as output of the LLM. 
+          The UI state is synced through the SDK, ensuring the model remains aware of your interactions in real-time.
         </p>
       </div>
     </div>
@@ -2000,10 +2121,6 @@ export function ChatList({ messages, session, isShared, selectedModel }: ChatLis
                 Please{' '}
                 <Link href="/login" className="underline">
                   log in
-                </Link>{' '}
-                or{' '}
-                <Link href="/signup" className="underline">
-                  sign up
                 </Link>{' '}
                 to save and revisit your chat history!
               </p>
@@ -2252,11 +2369,12 @@ export async function SidebarDesktop() {
 
 
 // components/header.tsx 
-import * as React from 'react'
-import Link from 'next/link'
+'use client'
 
+import * as React from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import { auth } from '@/auth'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   IconGitHub,
@@ -2268,35 +2386,64 @@ import { UserMenu } from '@/components/user-menu'
 import { SidebarMobile } from './sidebar-mobile'
 import { SidebarToggle } from './sidebar-toggle'
 import { ChatHistory } from './chat-history'
-import { Session } from '@/lib/types'
+import { verifyToken, UserData } from '@/lib/kamiwazaApi'
 
-async function UserOrLogin() {
-  const session = (await auth()) as Session
+function UserOrLogin() {
+  const [user, setUser] = useState<UserData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [allowAnonymous, setAllowAnonymous] = useState(false)
+
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const userData = await verifyToken()
+        setUser(userData)
+        const response = await fetch('/api/allow-anonymous')
+        const { allowAnonymous } = await response.json()
+        setAllowAnonymous(allowAnonymous)
+      } catch (error) {
+        console.error('Error verifying token:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    checkUser()
+  }, [])
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
+
   return (
     <>
-      {session?.user ? (
+      {user ? (
         <>
           <SidebarMobile>
-            <ChatHistory userId={session.user.id} />
+            <ChatHistory userId={user.id} />
           </SidebarMobile>
           <SidebarToggle />
+          <div className="flex items-center">
+            <IconSeparator className="size-6 text-muted-foreground/50" />
+            <UserMenu user={user} />
+            <span className="ml-2">Welcome, {user.full_name}</span>
+          </div>
         </>
       ) : (
-        <Link href="/new" rel="nofollow">
-          <IconNextChat className="size-6 mr-2 dark:hidden" inverted />
-          <IconNextChat className="hidden size-6 mr-2 dark:block" />
-        </Link>
+        <div className="flex items-center">
+          {allowAnonymous ? (
+            <>
+              <span className="ml-2">Anonymous User</span>
+              <Button variant="link" asChild className="ml-4">
+                <Link href="/login">Login to Kamiwaza</Link>
+              </Button>
+            </>
+          ) : (
+            <Button variant="link" asChild className="-ml-2">
+              <Link href="/login">Login to Kamiwaza</Link>
+            </Button>
+          )}
+        </div>
       )}
-      <div className="flex items-center">
-        <IconSeparator className="size-6 text-muted-foreground/50" />
-        {session?.user ? (
-          <UserMenu user={session.user} />
-        ) : (
-          <Button variant="link" asChild className="-ml-2">
-            <Link href="/login">Login</Link>
-          </Button>
-        )}
-      </div>
     </>
   )
 }
@@ -2310,29 +2457,16 @@ export function Header() {
         </React.Suspense>
       </div>
       <div className="flex items-center justify-end space-x-2">
-        <a
-          target="_blank"
-          href="https://github.com/vercel/nextjs-ai-chatbot/"
-          rel="noopener noreferrer"
-          className={cn(buttonVariants({ variant: 'outline' }))}
-        >
-          <IconGitHub />
-          <span className="hidden ml-2 md:flex">GitHub</span>
-        </a>
-        <a
-          href="https://vercel.com/templates/Next.js/nextjs-ai-chatbot"
-          target="_blank"
-          className={cn(buttonVariants())}
-        >
-          <IconVercel className="mr-2" />
-          <span className="hidden sm:block">Deploy to Vercel</span>
-          <span className="sm:hidden">Deploy</span>
-        </a>
+          {process.env.NEXT_PUBLIC_KAMIWAZA_URI ? (
+            <a href={process.env.NEXT_PUBLIC_KAMIWAZA_URI} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center">
+              <span className="mr-1">→</span> {/* Little arrow added */}
+              Kamiwaza Dashboard
+            </a>
+        ) : null}
       </div>
     </header>
   )
 }
-
 
 // components/sidebar-list.tsx 
 import { clearChats, getChats } from '@/app/actions'
@@ -2434,16 +2568,29 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
   const [messages] = useUIState()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const isAnonymous = session?.user?.isAnonymous ?? true
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
+  const userId = session?.user?.id || 'anonymous';
 
   useEffect(() => {
-    if (session?.user) {
-      if (!path.includes('chat') && messages.length === 1) {
+    const checkAnonymous = async () => {
+      const response = await fetch('/api/allow-anonymous')
+      const { allowAnonymous } = await response.json()
+      if (!allowAnonymous && isAnonymous) {
+        router.push('/login')
+      }
+    }
+    checkAnonymous()
+  }, [isAnonymous, router])
+
+  useEffect(() => {
+    if (session?.user || isAnonymous) {
+      if (!path.includes('chat') && messages.length === 1 && !isAnonymous) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
-  }, [id, path, session?.user, messages])
+  }, [id, path, session?.user, messages, isAnonymous])
 
   useEffect(() => {
     const messagesLength = aiState.messages?.length
@@ -2467,8 +2614,6 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
 
   const handleModelSelect = (modelInfo: ModelInfo | null) => {
     setSelectedModel(modelInfo)
-    // Here you can add any additional logic needed when a model is selected
-    // For example, you might want to update the AI state or reset the chat
   }
 
   return (
@@ -2571,10 +2716,23 @@ import { toast } from 'sonner'
 import { IconSpinner } from './ui/icons'
 import { getMessageFromCode } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { login, verifyToken } from '@/lib/kamiwazaApi'
 
 export default function LoginForm() {
   const router = useRouter()
   const [result, dispatch] = useFormState(authenticate, undefined)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const userData = await verifyToken()
+      if (userData) {
+        // User is already authenticated
+        router.push('/')
+      }
+    }
+
+    checkAuth()
+  }, [router])
 
   useEffect(() => {
     if (result) {
@@ -2587,9 +2745,33 @@ export default function LoginForm() {
     }
   }, [result, router])
 
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const username = formData.get('username') as string
+    const password = formData.get('password') as string
+
+    try {
+      const loginResult = await login(username, password)
+      if (loginResult.access_token) {
+        localStorage.setItem('token', loginResult.access_token)
+        if (loginResult.refresh_token) {
+          localStorage.setItem('refreshToken', loginResult.refresh_token)
+        }
+        toast.success('Logged in successfully')
+        router.push('/')
+      } else {
+        toast.error('Login failed')
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      toast.error('An error occurred during login')
+    }
+  }
+
   return (
     <form
-      action={dispatch}
+      onSubmit={handleSubmit}
       className="flex flex-col items-center gap-4 space-y-3"
     >
       <div className="w-full flex-1 rounded-lg border bg-white px-6 pb-4 pt-8 shadow-md  md:w-96 dark:bg-zinc-950">
@@ -2598,17 +2780,17 @@ export default function LoginForm() {
           <div>
             <label
               className="mb-3 mt-5 block text-xs font-medium text-zinc-400"
-              htmlFor="email"
+              htmlFor="username"
             >
-              Email
+              Username
             </label>
             <div className="relative">
               <input
                 className="peer block w-full rounded-md border bg-zinc-50 px-2 py-[9px] text-sm outline-none placeholder:text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950"
-                id="email"
-                type="email"
-                name="email"
-                placeholder="Enter your email address"
+                id="username"
+                type="text"
+                name="username"
+                placeholder="Enter your username"
                 required
               />
             </div>
@@ -2636,12 +2818,6 @@ export default function LoginForm() {
         <LoginButton />
       </div>
 
-      <Link
-        href="/signup"
-        className="flex flex-row gap-1 text-sm text-zinc-400"
-      >
-        No account yet? <div className="font-semibold underline">Sign up</div>
-      </Link>
     </form>
   )
 }
@@ -2658,7 +2834,6 @@ function LoginButton() {
     </button>
   )
 }
-
 
 // components/signup-form.tsx 
 'use client'
@@ -4821,774 +4996,105 @@ CodeBlock.displayName = 'CodeBlock'
 export { CodeBlock }
 
 
-// components/stocks/index.tsx 
-'use client'
+// lib/kamiwazaApi.ts 
+const KAMIWAZA_API_URI = process.env.KAMIWAZA_API_URI || 'http://localhost:7777';
 
-import dynamic from 'next/dynamic'
-import { StockSkeleton } from './stock-skeleton'
-import { StocksSkeleton } from './stocks-skeleton'
-import { EventsSkeleton } from './events-skeleton'
-
-export { spinner } from './spinner'
-export { BotCard, BotMessage, SystemMessage } from './message'
-
-const Stock = dynamic(() => import('./stock').then(mod => mod.Stock), {
-  ssr: false,
-  loading: () => <StockSkeleton />
-})
-
-const Purchase = dynamic(
-  () => import('./stock-purchase').then(mod => mod.Purchase),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[375px] rounded-xl border bg-zinc-950 p-4 text-green-400 sm:h-[314px]" />
-    )
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<any> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers = new Headers(options.headers);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
-)
+  
+  const response = await fetch(`${KAMIWAZA_API_URI}${url}`, {
+    ...options,
+    headers,
+  });
 
-const Stocks = dynamic(() => import('./stocks').then(mod => mod.Stocks), {
-  ssr: false,
-  loading: () => <StocksSkeleton />
-})
-
-const Events = dynamic(() => import('./events').then(mod => mod.Events), {
-  ssr: false,
-  loading: () => <EventsSkeleton />
-})
-
-export { Stock, Purchase, Stocks, Events }
-
-
-// components/stocks/stocks.tsx 
-'use client'
-
-import { useActions, useUIState } from 'ai/rsc'
-
-import type { AI } from '@/lib/chat/actions'
-
-interface Stock {
-  symbol: string
-  price: number
-  delta: number
-}
-
-export function Stocks({ props: stocks }: { props: Stock[] }) {
-  const [, setMessages] = useUIState<typeof AI>()
-  const { submitUserMessage } = useActions()
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-col gap-2 overflow-y-scroll pb-4 text-sm sm:flex-row">
-        {stocks.map(stock => (
-          <button
-            key={stock.symbol}
-            className="flex cursor-pointer flex-row gap-2 rounded-lg bg-zinc-800 p-2 text-left hover:bg-zinc-700 sm:w-52"
-            onClick={async () => {
-              const response = await submitUserMessage(`View ${stock.symbol}`)
-              setMessages(currentMessages => [...currentMessages, response])
-            }}
-          >
-            <div
-              className={`text-xl ${
-                stock.delta > 0 ? 'text-green-600' : 'text-red-600'
-              } flex w-11 flex-row justify-center rounded-md bg-white/10 p-2`}
-            >
-              {stock.delta > 0 ? '↑' : '↓'}
-            </div>
-            <div className="flex flex-col">
-              <div className="bold uppercase text-zinc-300">{stock.symbol}</div>
-              <div className="text-base text-zinc-500">
-                ${stock.price.toExponential(1)}
-              </div>
-            </div>
-            <div className="ml-auto flex flex-col">
-              <div
-                className={`${
-                  stock.delta > 0 ? 'text-green-600' : 'text-red-600'
-                } bold text-right uppercase`}
-              >
-                {` ${((stock.delta / stock.price) * 100).toExponential(1)}%`}
-              </div>
-              <div
-                className={`${
-                  stock.delta > 0 ? 'text-green-700' : 'text-red-700'
-                } text-right text-base`}
-              >
-                {stock.delta.toExponential(1)}
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
-      <div className="p-4 text-center text-sm text-zinc-500">
-        Note: Data and latency are simulated for illustrative purposes and
-        should not be considered as financial advice.
-      </div>
-    </div>
-  )
-}
-
-
-// components/stocks/stock-skeleton.tsx 
-export const StockSkeleton = () => {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-green-400">
-      <div className="float-right inline-block w-fit rounded-full bg-zinc-700 px-2 py-1 text-xs text-transparent">
-        xxxxxxx
-      </div>
-      <div className="mb-1 w-fit rounded-md bg-zinc-700 text-lg text-transparent">
-        xxxx
-      </div>
-      <div className="w-fit rounded-md bg-zinc-700 text-3xl font-bold text-transparent">
-        xxxx
-      </div>
-      <div className="text mt-1 w-fit rounded-md bg-zinc-700 text-xs text-transparent">
-        xxxxxx xxx xx xxxx xx xxx
-      </div>
-
-      <div className="relative -mx-4 cursor-col-resize">
-        <div style={{ height: 146 }}></div>
-      </div>
-    </div>
-  )
-}
-
-
-// components/stocks/events.tsx 
-import { format, parseISO } from 'lib/utils'
-
-interface Event {
-  date: string
-  headline: string
-  description: string
-}
-
-export function Events({ props: events }: { props: Event[] }) {
-  return (
-    <div className="-mt-2 flex w-full flex-col gap-2 py-4">
-      {events.map(event => (
-        <div
-          key={event.date}
-          className="flex shrink-0 flex-col gap-1 rounded-lg bg-zinc-800 p-4"
-        >
-          <div className="text-sm text-zinc-400">
-            {format(parseISO(event.date), 'dd LLL, yyyy')}
-          </div>
-          <div className="text-base font-bold text-zinc-200">
-            {event.headline}
-          </div>
-          <div className="text-zinc-500">
-            {event.description.slice(0, 70)}...
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-
-// components/stocks/stock.tsx 
-'use client'
-
-import { useState, useRef, useEffect, useId } from 'react'
-import { subMonths, format } from 'lib/utils'
-import { useAIState } from 'ai/rsc'
-
-interface Stock {
-  symbol: string
-  price: number
-  delta: number
-}
-
-function scaleLinear(domain: [number, number], range: [number, number]) {
-  const [d0, d1] = domain
-  const [r0, r1] = range
-
-  return function scale(value: number): number {
-    return r0 + ((value - d0) / (d1 - d0)) * (r1 - r0)
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`API request failed: ${response.status} ${response.statusText}\nBody: ${errorBody}`);
   }
+
+  return response.json();
 }
 
-function useResizeObserver<T extends HTMLElement = HTMLElement>(
-  ref: React.RefObject<T>
-) {
-  const [size, setSize] = useState({ width: 0, height: 0 })
-
-  useEffect(() => {
-    if (!ref.current) return
-
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
-        setSize({
-          width: entry.borderBoxSize[0].inlineSize,
-          height: entry.borderBoxSize[0].blockSize
-        })
-      } else {
-        // Fallback for browsers that don't support borderBoxSize
-        const { width, height } = entry.target.getBoundingClientRect()
-        setSize({ width, height })
-      }
-    })
-
-    observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [ref])
-
-  return size
+interface LoginResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type: string;
+  expires_in: number;
 }
 
-export function Stock({ props: { symbol, price, delta } }: { props: Stock }) {
-  const [aiState, setAIState] = useAIState()
-  const id = useId()
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const response = await fetch(`${KAMIWAZA_API_URI}/api/auth/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      username,
+      password,
+    }),
+  });
 
-  const [priceAtTime, setPriceAtTime] = useState({
-    time: '00:00',
-    value: price.toFixed(2),
-    x: 0
-  })
+  if (!response.ok) {
+    throw new Error('Login failed');
+  }
 
-  const [startHighlight, setStartHighlight] = useState(0)
-  const [endHighlight, setEndHighlight] = useState(0)
+  return response.json()
+}
 
-  const chartRef = useRef<HTMLDivElement>(null)
-  const { width = 0 } = useResizeObserver(chartRef)
-
-  const xToDate = scaleLinear(
-    [0, width],
-    [subMonths(new Date(), 6).getTime(), new Date().getTime()]
-  )
-
-  const xToValue = scaleLinear(
-    [0, width],
-    [price - price / 2, price + price / 2]
-  )
-
-  useEffect(() => {
-    if (startHighlight && endHighlight) {
-      const message = {
-        id,
-        role: 'system' as const,
-        content: `[User has highlighted dates between between ${format(
-          new Date(xToDate(startHighlight)),
-          'd LLL'
-        )} and ${format(new Date(xToDate(endHighlight)), 'd LLL, yyyy')}`
+export async function getCurrentUser(): Promise<UserData | null> {
+  try {
+    // Check if we're on the client-side
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return null;
       }
-
-      if (aiState.messages[aiState.messages.length - 1]?.id === id) {
-        setAIState({
-          ...aiState,
-          messages: [...aiState.messages.slice(0, -1), message]
-        })
-      } else {
-        setAIState({
-          ...aiState,
-          messages: [...aiState.messages, message]
-        })
-      }
+      return await verifyToken();
+    } else {
+      // We're on the server-side, so we can't access localStorage
+      console.log('getCurrentUser called on server-side, returning null');
+      return null;
     }
-  }, [startHighlight, endHighlight])
-
-  return (
-    <div className="rounded-xl border bg-zinc-950 p-4 text-green-400">
-      <div className="float-right inline-block rounded-full bg-white/10 px-2 py-1 text-xs">
-        {`${delta > 0 ? '+' : ''}${((delta / price) * 100).toFixed(2)}% ${
-          delta > 0 ? '↑' : '↓'
-        }`}
-      </div>
-      <div className="text-lg text-zinc-300">{symbol}</div>
-      <div className="text-3xl font-bold">${price}</div>
-      <div className="text mt-1 text-xs text-zinc-500">
-        Closed: Feb 27, 4:59 PM EST
-      </div>
-
-      <div
-        className="relative -mx-4 cursor-col-resize"
-        onPointerDown={event => {
-          if (chartRef.current) {
-            const { clientX } = event
-            const { left } = chartRef.current.getBoundingClientRect()
-
-            setStartHighlight(clientX - left)
-            setEndHighlight(0)
-
-            setPriceAtTime({
-              time: format(new Date(xToDate(clientX)), 'dd LLL yy'),
-              value: xToValue(clientX).toFixed(2),
-              x: clientX - left
-            })
-          }
-        }}
-        onPointerUp={event => {
-          if (chartRef.current) {
-            const { clientX } = event
-            const { left } = chartRef.current.getBoundingClientRect()
-
-            setEndHighlight(clientX - left)
-          }
-        }}
-        onPointerMove={event => {
-          if (chartRef.current) {
-            const { clientX } = event
-            const { left } = chartRef.current.getBoundingClientRect()
-
-            setPriceAtTime({
-              time: format(new Date(xToDate(clientX)), 'dd LLL yy'),
-              value: xToValue(clientX).toFixed(2),
-              x: clientX - left
-            })
-          }
-        }}
-        onPointerLeave={() => {
-          setPriceAtTime({
-            time: '00:00',
-            value: price.toFixed(2),
-            x: 0
-          })
-        }}
-        ref={chartRef}
-      >
-        {priceAtTime.x > 0 ? (
-          <div
-            className="pointer-events-none absolute z-10 flex w-fit select-none gap-2 rounded-md bg-zinc-800 p-2"
-            style={{
-              left: priceAtTime.x - 124 / 2,
-              top: 30
-            }}
-          >
-            <div className="text-xs tabular-nums">${priceAtTime.value}</div>
-            <div className="text-xs tabular-nums text-zinc-400">
-              {priceAtTime.time}
-            </div>
-          </div>
-        ) : null}
-
-        {startHighlight ? (
-          <div
-            className="pointer-events-none absolute h-32 w-5 select-none rounded-md border border-zinc-500 bg-zinc-500/20"
-            style={{
-              left: startHighlight,
-              width: endHighlight
-                ? endHighlight - startHighlight
-                : priceAtTime.x - startHighlight,
-              bottom: 0
-            }}
-          ></div>
-        ) : null}
-
-        <svg
-          viewBox="0 0 250.0 168.0"
-          height="150"
-          width="100%"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient
-              id="fill-id-tsuid_31"
-              x1="0%"
-              x2="0%"
-              y1="0%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#34a853" stopOpacity="0.38"></stop>
-              <stop offset="13%" stopColor="#e6f4ea" stopOpacity="0"></stop>
-            </linearGradient>
-            <clipPath id="range-id-tsuid_31">
-              <rect height="100%" width="0" x="0" y="0"></rect>
-            </clipPath>
-            <defs>
-              <linearGradient
-                id="chart-grad-_f1bJZYLUHqWpxc8Prs2meA_33"
-                x1="0%"
-                x2="0%"
-                y1="0%"
-                y2="100%"
-              >
-                <stop offset="0%" stopColor="#34a853" stopOpacity="0.38"></stop>
-                <stop offset="13%" stopColor="#e6f4ea" stopOpacity="0"></stop>
-              </linearGradient>
-            </defs>
-            <clipPath id="mask-_f1bJZYLUHqWpxc8Prs2meA_32">
-              <rect height="218" width="250" x="0" y="-5"></rect>
-            </clipPath>
-          </defs>
-          <path
-            d="M  0 42.86 L 0.89 46.26 L 1.78 44.3 L 2.68 44.24 L 3.57 42 L 4.46 43.42 L 5.35 43.62 L 6.25 47 L 7.14 47.65 L 8.03 47.69 L 8.92 45.55 L 9.82 43.19 L 10.71 43.9 L 11.6 42.83 L 12.49 42.81 L 13.39 46.75 L 14.28 43.06 L 15.17 40.8 L 16.06 39.72 L 16.96 39.77 L 17.85 45.77 L 18.74 44.93 L 19.63 44.35 L 20.53 40.29 L 21.42 42.77 L 22.31 42.12 L 23.2 43.4 L 24.1 47.95 L 24.99 50.15 L 25.88 48.59 L 26.77 42.18 L 27.67 44.1 L 28.56 39.91 L 29.45 44.92 L 30.34 47.62 L 31.24 48.06 L 32.13 47.67 L 33.02 56.47 L 33.91 57.74 L 34.8 65.48 L 35.7 64.47 L 36.59 47.25 L 37.48 58.26 L 38.37 52.04 L 39.27 55.8 L 40.16 92.92 L 41.05 105.2 L 41.94 102 L 42.84 106.14 L 43.73 78.71 L 44.62 104.6 L 45.51 96.58 L 46.41 67.56 L 47.3 69.53 L 48.19 69.99 L 49.08 66.75 L 49.98 69.72 L 50.87 70.13 L 51.76 71.3 L 52.65 70.03 L 53.55 67.92 L 54.44 66.41 L 55.33 97.12 L 56.22 95.93 L 57.12 95.03 L 58.01 95.09 L 58.9 65.56 L 59.79 65.12 L 60.69 82.42 L 61.58 74.7 L 62.47 71.13 L 63.36 82.43 L 64.26 96.02 L 65.15 100.36 L 66.04 98.6 L 66.93 103.37 L 67.82 102.12 L 68.72 97.08 L 69.61 89.74 L 70.5 90.7 L 71.39 93.46 L 72.29 94.24 L 73.18 97.8 L 74.07 97.88 L 74.96 96.63 L 75.86 96.27 L 76.75 97.15 L 77.64 100.12 L 78.53 100.51 L 79.43 106.59 L 80.32 104.54 L 81.21 100.31 L 82.1 118.76 L 83 106.24 L 83.89 114.8 L 84.78 174.89 L 85.67 122.28 L 86.57 149.25 L 87.46 151.47 L 88.35 153.38 L 89.24 153.5 L 90.14 149.24 L 91.03 122.44 L 91.92 122.08 L 92.81 147.16 L 93.71 147.46 L 94.6 119.13 L 95.49 117.97 L 96.38 122.22 L 97.28 116.38 L 98.17 119.53 L 99.06 119.65 L 99.95 120.15 L 100.84 120.22 L 101.74 121.28 L 102.63 121.4 L 103.52 122.97 L 104.41 122.15 L 105.31 120.6 L 106.2 116.55 L 107.09 122.23 L 107.98 120.96 L 108.88 119.54 L 109.77 120.19 L 110.66 120.99 L 111.55 119.92 L 112.45 115.69 L 113.34 116.33 L 114.23 116.07 L 115.12 115.34 L 116.02 111.34 L 116.91 107.23 L 117.8 113.21 L 118.69 98.77 L 119.59 97.04 L 120.48 96.56 L 121.37 96.36 L 122.26 99.7 L 123.16 103.33 L 124.05 100.38 L 124.94 99.68 L 125.83 99.02 L 126.73 102.56 L 127.62 103.25 L 128.51 103.38 L 129.4 104.89 L 130.3 118.07 L 131.19 100.82 L 132.08 103.06 L 132.97 103.47 L 133.86 99.8 L 134.76 111.28 L 135.65 107.73 L 136.54 107.46 L 137.43 108.08 L 138.33 109.82 L 139.22 110.94 L 140.11 111.3 L 141 108.14 L 141.9 109.35 L 142.79 108.38 L 143.68 99.08 L 144.57 99.02 L 145.47 98.61 L 146.36 99.07 L 147.25 99.26 L 148.14 95.1 L 149.04 92.08 L 149.93 92.76 L 150.82 92.87 L 151.71 83.31 L 152.61 82.93 L 153.5 84.86 L 154.39 84.12 L 155.28 94.08 L 156.18 93.31 L 157.07 94.23 L 157.96 94.58 L 158.85 99.33 L 159.75 80 L 160.64 90.28 L 161.53 84.07 L 162.42 68.37 L 163.32 76.88 L 164.21 81.78 L 165.1 80.72 L 165.99 73.89 L 166.88 77.14 L 167.78 67.58 L 168.67 59.82 L 169.56 61.91 L 170.45 61.07 L 171.35 73.74 L 172.24 77.02 L 173.13 78.61 L 174.02 71.59 L 174.92 68.24 L 175.81 72.14 L 176.7 65.37 L 177.59 76.73 L 178.49 88.02 L 179.38 88.01 L 180.27 88.27 L 181.16 86.23 L 182.06 86.14 L 182.95 89.54 L 183.84 94.16 L 184.73 97.72 L 185.63 81.52 L 186.52 92.85 L 187.41 94.14 L 188.3 93.06 L 189.2 92.64 L 190.09 92.44 L 190.98 91.75 L 191.87 90.53 L 192.77 88.27 L 193.66 85.44 L 194.55 82.26 L 195.44 85.08 L 196.34 85.65 L 197.23 53.43 L 198.12 72.01 L 199.01 38.37 L 199.9 69.43 L 200.8 74.46 L 201.69 74.22 L 202.58 82.46 L 203.47 77.01 L 204.37 87.8 L 205.26 91.56 L 206.15 76.69 L 207.04 76.46 L 207.94 78.13 L 208.83 80.06 L 209.72 92.79 L 210.61 87.74 L 211.51 88.21 L 212.4 88.47 L 213.29 87.35 L 214.18 89.69 L 215.08 77.37 L 215.97 87.95 L 216.86 75.16 L 217.75 70.47 L 218.65 85.11 L 219.54 88.1 L 220.43 88.06 L 221.32 86.34 L 222.22 76.91 L 223.11 75.33 L 224 73.6 L 224.89 25.31 L 225.79 44.14 L 226.68 43.93 L 227.57 45.13 L 228.46 44.03 L 229.36 35.73 L 230.25 33.65 L 231.14 34.81 L 232.03 17.64 L 232.92 21.13 L 233.82 19.37 L 234.71 24.66 L 235.6 23.87 L 236.49 22.56 L 237.39 28.48 L 238.28 25.33 L 239.17 28.51 L 240.06 30.83 L 240.96 35.79 L 241.85 34.6 L 242.74 31.2 L 243.63 32.97 L 244.53 33.01 L 245.42 31.38 L 246.31 30.21 L 247.2 27.75 L 248.1 25.27 L 248.99 23 L 249.88 23 L 250 23 L 2000 0 L 2000 1000 L -1000 1000"
-            clipPath="url(#range-id-tsuid_31)"
-            vectorEffect="non-scaling-stroke"
-            stroke="none"
-            strokeWidth={2}
-            fill='url("#fill-id-tsuid_31")'
-          ></path>
-          <path
-            clipPath="url(#mask-_f1bJZYLUHqWpxc8Prs2meA_32)"
-            d="M 0 42.86 L 0.89 46.26 L 1.78 44.3 L 2.68 44.24 L 3.57 42 L 4.46 43.42 L 5.35 43.62 L 6.25 47 L 7.14 47.65 L 8.03 47.69 L 8.92 45.55 L 9.82 43.19 L 10.71 43.9 L 11.6 42.83 L 12.49 42.81 L 13.39 46.75 L 14.28 43.06 L 15.17 40.8 L 16.06 39.72 L 16.96 39.77 L 17.85 45.77 L 18.74 44.93 L 19.63 44.35 L 20.53 40.29 L 21.42 42.77 L 22.31 42.12 L 23.2 43.4 L 24.1 47.95 L 24.99 50.15 L 25.88 48.59 L 26.77 42.18 L 27.67 44.1 L 28.56 39.91 L 29.45 44.92 L 30.34 47.62 L 31.24 48.06 L 32.13 47.67 L 33.02 56.47 L 33.91 57.74 L 34.8 65.48 L 35.7 64.47 L 36.59 47.25 L 37.48 58.26 L 38.37 52.04 L 39.27 55.8 L 40.16 92.92 L 41.05 105.2 L 41.94 102 L 42.84 106.14 L 43.73 78.71 L 44.62 104.6 L 45.51 96.58 L 46.41 67.56 L 47.3 69.53 L 48.19 69.99 L 49.08 66.75 L 49.98 69.72 L 50.87 70.13 L 51.76 71.3 L 52.65 70.03 L 53.55 67.92 L 54.44 66.41 L 55.33 97.12 L 56.22 95.93 L 57.12 95.03 L 58.01 95.09 L 58.9 65.56 L 59.79 65.12 L 60.69 82.42 L 61.58 74.7 L 62.47 71.13 L 63.36 82.43 L 64.26 96.02 L 65.15 100.36 L 66.04 98.6 L 66.93 103.37 L 67.82 102.12 L 68.72 97.08 L 69.61 89.74 L 70.5 90.7 L 71.39 93.46 L 72.29 94.24 L 73.18 97.8 L 74.07 97.88 L 74.96 96.63 L 75.86 96.27 L 76.75 97.15 L 77.64 100.12 L 78.53 100.51 L 79.43 106.59 L 80.32 104.54 L 81.21 100.31 L 82.1 118.76 L 83 106.24 L 83.89 114.8 L 84.78 174.89 L 85.67 122.28 L 86.57 149.25 L 87.46 151.47 L 88.35 153.38 L 89.24 153.5 L 90.14 149.24 L 91.03 122.44 L 91.92 122.08 L 92.81 147.16 L 93.71 147.46 L 94.6 119.13 L 95.49 117.97 L 96.38 122.22 L 97.28 116.38 L 98.17 119.53 L 99.06 119.65 L 99.95 120.15 L 100.84 120.22 L 101.74 121.28 L 102.63 121.4 L 103.52 122.97 L 104.41 122.15 L 105.31 120.6 L 106.2 116.55 L 107.09 122.23 L 107.98 120.96 L 108.88 119.54 L 109.77 120.19 L 110.66 120.99 L 111.55 119.92 L 112.45 115.69 L 113.34 116.33 L 114.23 116.07 L 115.12 115.34 L 116.02 111.34 L 116.91 107.23 L 117.8 113.21 L 118.69 98.77 L 119.59 97.04 L 120.48 96.56 L 121.37 96.36 L 122.26 99.7 L 123.16 103.33 L 124.05 100.38 L 124.94 99.68 L 125.83 99.02 L 126.73 102.56 L 127.62 103.25 L 128.51 103.38 L 129.4 104.89 L 130.3 118.07 L 131.19 100.82 L 132.08 103.06 L 132.97 103.47 L 133.86 99.8 L 134.76 111.28 L 135.65 107.73 L 136.54 107.46 L 137.43 108.08 L 138.33 109.82 L 139.22 110.94 L 140.11 111.3 L 141 108.14 L 141.9 109.35 L 142.79 108.38 L 143.68 99.08 L 144.57 99.02 L 145.47 98.61 L 146.36 99.07 L 147.25 99.26 L 148.14 95.1 L 149.04 92.08 L 149.93 92.76 L 150.82 92.87 L 151.71 83.31 L 152.61 82.93 L 153.5 84.86 L 154.39 84.12 L 155.28 94.08 L 156.18 93.31 L 157.07 94.23 L 157.96 94.58 L 158.85 99.33 L 159.75 80 L 160.64 90.28 L 161.53 84.07 L 162.42 68.37 L 163.32 76.88 L 164.21 81.78 L 165.1 80.72 L 165.99 73.89 L 166.88 77.14 L 167.78 67.58 L 168.67 59.82 L 169.56 61.91 L 170.45 61.07 L 171.35 73.74 L 172.24 77.02 L 173.13 78.61 L 174.02 71.59 L 174.92 68.24 L 175.81 72.14 L 176.7 65.37 L 177.59 76.73 L 178.49 88.02 L 179.38 88.01 L 180.27 88.27 L 181.16 86.23 L 182.06 86.14 L 182.95 89.54 L 183.84 94.16 L 184.73 97.72 L 185.63 81.52 L 186.52 92.85 L 187.41 94.14 L 188.3 93.06 L 189.2 92.64 L 190.09 92.44 L 190.98 91.75 L 191.87 90.53 L 192.77 88.27 L 193.66 85.44 L 194.55 82.26 L 195.44 85.08 L 196.34 85.65 L 197.23 53.43 L 198.12 72.01 L 199.01 38.37 L 199.9 69.43 L 200.8 74.46 L 201.69 74.22 L 202.58 82.46 L 203.47 77.01 L 204.37 87.8 L 205.26 91.56 L 206.15 76.69 L 207.04 76.46 L 207.94 78.13 L 208.83 80.06 L 209.72 92.79 L 210.61 87.74 L 211.51 88.21 L 212.4 88.47 L 213.29 87.35 L 214.18 89.69 L 215.08 77.37 L 215.97 87.95 L 216.86 75.16 L 217.75 70.47 L 218.65 85.11 L 219.54 88.1 L 220.43 88.06 L 221.32 86.34 L 222.22 76.91 L 223.11 75.33 L 224 73.6 L 224.89 25.31 L 225.79 44.14 L 226.68 43.93 L 227.57 45.13 L 228.46 44.03 L 229.36 35.73 L 230.25 33.65 L 231.14 34.81 L 232.03 17.64 L 232.92 21.13 L 233.82 19.37 L 234.71 24.66 L 235.6 23.87 L 236.49 22.56 L 237.39 28.48 L 238.28 25.33 L 239.17 28.51 L 240.06 30.83 L 240.96 35.79 L 241.85 34.6 L 242.74 31.2 L 243.63 32.97 L 244.53 33.01 L 245.42 31.38 L 246.31 30.21 L 247.2 27.75 L 248.1 25.27 L 248.99 23 L 249.88 23 L 250 23 L 2000 0 L 2000 1000 L -1000 1000"
-            vectorEffect="non-scaling-stroke"
-            stroke="#34a853"
-            style={{ fill: 'url(#chart-grad-_f1bJZYLUHqWpxc8Prs2meA_33)' }}
-          ></path>
-        </svg>
-      </div>
-    </div>
-  )
-}
-
-
-// components/stocks/stocks-skeleton.tsx 
-export const StocksSkeleton = () => {
-  return (
-    <div className="mb-4 flex flex-col gap-2 overflow-y-scroll pb-4 text-sm sm:flex-row">
-      <div className="flex h-[60px] w-full cursor-pointer flex-row gap-2 rounded-lg bg-zinc-800 p-2 text-left hover:bg-zinc-800 sm:w-[208px]"></div>
-      <div className="flex h-[60px] w-full cursor-pointer flex-row gap-2 rounded-lg bg-zinc-800 p-2 text-left hover:bg-zinc-800 sm:w-[208px]"></div>
-      <div className="flex h-[60px] w-full cursor-pointer flex-row gap-2 rounded-lg bg-zinc-800 p-2 text-left hover:bg-zinc-800 sm:w-[208px]"></div>
-    </div>
-  )
-}
-
-
-// components/stocks/message.tsx 
-'use client'
-
-import { IconOpenAI, IconKamiwazaAI, IconUser } from '@/components/ui/icons'
-import { cn } from '@/lib/utils'
-import { spinner } from './spinner'
-import { CodeBlock } from '../ui/codeblock'
-import { MemoizedReactMarkdown } from '../markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import { StreamableValue } from 'ai/rsc'
-import { useStreamableText } from '@/lib/hooks/use-streamable-text'
-import { ModelInfo } from '@/lib/types'
-
-// Different types of message bubbles.
-
-export function UserMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="group relative flex items-start md:-ml-12">
-      <div className="flex size-[25px] shrink-0 select-none items-center justify-center rounded-md border bg-background shadow-sm">
-        <IconUser />
-      </div>
-      <div className="ml-4 flex-1 space-y-2 overflow-hidden pl-2">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-export function BotMessage({
-  content,
-  className,
-  selectedModel
-}: {
-  content: string | StreamableValue<string>
-  className?: string
-  selectedModel: ModelInfo | null
-}) {
-  const text = useStreamableText(content)
-
-  const isKamiwazaModel = selectedModel && selectedModel.baseUrl
-
-  return (
-    <div className={cn('group relative flex items-start md:-ml-12', className)}>
-      <div className="flex size-[24px] shrink-0 select-none items-center justify-center rounded-md border bg-primary text-primary-foreground shadow-sm">
-        {isKamiwazaModel ? <IconKamiwazaAI /> : <IconOpenAI />}
-      </div>
-      <div className="ml-4 flex-1 space-y-2 overflow-hidden px-1">
-        <MemoizedReactMarkdown
-          className="prose break-words dark:prose-invert prose-p:leading-relaxed prose-pre:p-0"
-          remarkPlugins={[remarkGfm, remarkMath]}
-          components={{
-            p({ children }) {
-              return <p className="mb-2 last:mb-0">{children}</p>
-            },
-            code({ node, inline, className, children, ...props }) {
-              if (children.length) {
-                if (children[0] == '▍') {
-                  return (
-                    <span className="mt-1 animate-pulse cursor-default">▍</span>
-                  )
-                }
-
-                children[0] = (children[0] as string).replace('`▍`', '▍')
-              }
-
-              const match = /language-(\w+)/.exec(className || '')
-
-              if (inline) {
-                return (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                )
-              }
-
-              return (
-                <CodeBlock
-                  key={Math.random()}
-                  language={(match && match[1]) || ''}
-                  value={String(children).replace(/\n$/, '')}
-                  {...props}
-                />
-              )
-            }
-          }}
-        >
-          {text}
-        </MemoizedReactMarkdown>
-      </div>
-    </div>
-  )
-}
-
-export function BotCard({
-  children,
-  showAvatar = true
-}: {
-  children: React.ReactNode
-  showAvatar?: boolean
-}) {
-  return (
-    <div className="group relative flex items-start md:-ml-12">
-      <div
-        className={cn(
-          'flex size-[24px] shrink-0 select-none items-center justify-center rounded-md border bg-primary text-primary-foreground shadow-sm',
-          !showAvatar && 'invisible'
-        )}
-      >
-        <IconOpenAI />
-      </div>
-      <div className="ml-4 flex-1 pl-2">{children}</div>
-    </div>
-  )
-}
-
-export function SystemMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className={
-        'mt-2 flex items-center justify-center gap-2 text-xs text-gray-500'
-      }
-    >
-      <div className={'max-w-[600px] flex-initial p-2'}>{children}</div>
-    </div>
-  )
-}
-
-export function SpinnerMessage() {
-  return (
-    <div className="group relative flex items-start md:-ml-12">
-      <div className="flex size-[24px] shrink-0 select-none items-center justify-center rounded-md border bg-primary text-primary-foreground shadow-sm">
-        <IconOpenAI />
-      </div>
-      <div className="ml-4 h-[24px] flex flex-row items-center flex-1 space-y-2 overflow-hidden px-1">
-        {spinner}
-      </div>
-    </div>
-  )
-}
-
-
-// components/stocks/events-skeleton.tsx 
-const placeholderEvents = [
-  {
-    date: '2022-10-01',
-    headline: 'NVIDIA releases new AI-powered graphics card',
-    description:
-      'NVIDIA unveils the latest graphics card infused with AI capabilities, revolutionizing gaming and rendering experiences.'
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
   }
-]
-
-export const EventsSkeleton = () => {
-  return (
-    <div className="-mt-2 flex w-full flex-col gap-2 py-4">
-      {placeholderEvents.map(event => (
-        <div
-          key={event.date}
-          className="flex shrink-0 flex-col gap-1 rounded-lg bg-zinc-800 p-4"
-        >
-          <div className="w-fit rounded-md bg-zinc-700 text-sm text-transparent">
-            {event.date}
-          </div>
-          <div className="w-fit rounded-md bg-zinc-700 text-transparent">
-            {event.headline}
-          </div>
-          <div className="w-auto rounded-md bg-zinc-700 text-transparent">
-            {event.description.slice(0, 70)}...
-          </div>
-        </div>
-      ))}
-    </div>
-  )
 }
 
-
-// components/stocks/spinner.tsx 
-'use client'
-
-export const spinner = (
-  <svg
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    viewBox="0 0 24 24"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    xmlns="http://www.w3.org/2000/svg"
-    className="size-5 animate-spin stroke-zinc-400"
-  >
-    <path d="M12 3v3m6.366-.366-2.12 2.12M21 12h-3m.366 6.366-2.12-2.12M12 21v-3m-6.366.366 2.12-2.12M3 12h3m-.366-6.366 2.12 2.12"></path>
-  </svg>
-)
-
-
-// components/stocks/stock-purchase.tsx 
-'use client'
-
-import { useId, useState } from 'react'
-import { useActions, useAIState, useUIState } from 'ai/rsc'
-import { formatNumber } from '@/lib/utils'
-
-import type { AI } from '@/lib/chat/actions'
-
-interface Purchase {
-  numberOfShares?: number
-  symbol: string
-  price: number
-  status: 'requires_action' | 'completed' | 'expired'
+export interface UserData {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  organization_id: string;
+  is_superuser: boolean;
+  external_id: string;
+  is_active: boolean;
+  groups: string[];
+  created_at: string;
+  updated_at: string;
+  last_login: string;
 }
 
-export function Purchase({
-  props: { numberOfShares, symbol, price, status = 'expired' }
-}: {
-  props: Purchase
-}) {
-  const [value, setValue] = useState(numberOfShares || 100)
-  const [purchasingUI, setPurchasingUI] = useState<null | React.ReactNode>(null)
-  const [aiState, setAIState] = useAIState<typeof AI>()
-  const [, setMessages] = useUIState<typeof AI>()
-  const { confirmPurchase } = useActions()
-
-  // Unique identifier for this UI component.
-  const id = useId()
-
-  // Whenever the slider changes, we need to update the local value state and the history
-  // so LLM also knows what's going on.
-  function onSliderChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const newValue = Number(e.target.value)
-    setValue(newValue)
-
-    // Insert a hidden history info to the list.
-    const message = {
-      role: 'system' as const,
-      content: `[User has changed to purchase ${newValue} shares of ${name}. Total cost: $${(
-        newValue * price
-      ).toFixed(2)}]`,
-
-      // Identifier of this UI component, so we don't insert it many times.
-      id
-    }
-
-    // If last history state is already this info, update it. This is to avoid
-    // adding every slider change to the history.
-    if (aiState.messages[aiState.messages.length - 1]?.id === id) {
-      setAIState({
-        ...aiState,
-        messages: [...aiState.messages.slice(0, -1), message]
-      })
-
-      return
-    }
-
-    // If it doesn't exist, append it to history.
-    setAIState({ ...aiState, messages: [...aiState.messages, message] })
+export async function verifyToken(): Promise<UserData | null> {
+  if (typeof window === 'undefined') {
+    // We're on the server side, so we can't access localStorage
+    console.log('verifyToken called on server-side, returning null');
+    return null;
   }
 
-  return (
-    <div className="p-4 text-green-400 border rounded-xl bg-zinc-950">
-      <div className="inline-block float-right px-2 py-1 text-xs rounded-full bg-white/10">
-        +1.23% ↑
-      </div>
-      <div className="text-lg text-zinc-300">{symbol}</div>
-      <div className="text-3xl font-bold">${price}</div>
-      {purchasingUI ? (
-        <div className="mt-4 text-zinc-200">{purchasingUI}</div>
-      ) : status === 'requires_action' ? (
-        <>
-          <div className="relative pb-6 mt-6">
-            <p>Shares to purchase</p>
-            <input
-              id="labels-range-input"
-              type="range"
-              value={value}
-              onChange={onSliderChange}
-              min="10"
-              max="1000"
-              className="w-full h-1 rounded-lg appearance-none cursor-pointer bg-zinc-600 accent-green-500 dark:bg-zinc-700"
-            />
-            <span className="absolute text-xs bottom-1 start-0 text-zinc-400">
-              10
-            </span>
-            <span className="absolute text-xs -translate-x-1/2 bottom-1 start-1/3 text-zinc-400 rtl:translate-x-1/2">
-              100
-            </span>
-            <span className="absolute text-xs -translate-x-1/2 bottom-1 start-2/3 text-zinc-400 rtl:translate-x-1/2">
-              500
-            </span>
-            <span className="absolute text-xs bottom-1 end-0 text-zinc-400">
-              1000
-            </span>
-          </div>
-
-          <div className="mt-6">
-            <p>Total cost</p>
-            <div className="flex flex-wrap items-center text-xl font-bold sm:items-end sm:gap-2 sm:text-3xl">
-              <div className="flex flex-col basis-1/3 tabular-nums sm:basis-auto sm:flex-row sm:items-center sm:gap-2">
-                {value}
-                <span className="mb-1 text-sm font-normal text-zinc-600 sm:mb-0 dark:text-zinc-400">
-                  shares
-                </span>
-              </div>
-              <div className="text-center basis-1/3 sm:basis-auto">×</div>
-              <span className="flex flex-col basis-1/3 tabular-nums sm:basis-auto sm:flex-row sm:items-center sm:gap-2">
-                ${price}
-                <span className="mb-1 ml-1 text-sm font-normal text-zinc-600 sm:mb-0 dark:text-zinc-400">
-                  per share
-                </span>
-              </span>
-              <div className="pt-2 mt-2 text-center border-t basis-full border-t-zinc-700 sm:mt-0 sm:basis-auto sm:border-0 sm:pt-0 sm:text-left">
-                = <span>{formatNumber(value * price)}</span>
-              </div>
-            </div>
-          </div>
-
-          <button
-            className="w-full px-4 py-2 mt-6 font-bold bg-green-400 rounded-lg text-zinc-900 hover:bg-green-500"
-            onClick={async () => {
-              const response = await confirmPurchase(symbol, price, value)
-              setPurchasingUI(response.purchasingUI)
-
-              // Insert a new system message to the UI.
-              setMessages((currentMessages: any) => [
-                ...currentMessages,
-                response.newMessage
-              ])
-            }}
-          >
-            Purchase
-          </button>
-        </>
-      ) : status === 'completed' ? (
-        <p className="mb-2 text-white">
-          You have successfully purchased {value} ${symbol}. Total cost:{' '}
-          {formatNumber(value * price)}
-        </p>
-      ) : status === 'expired' ? (
-        <p className="mb-2 text-white">Your checkout session has expired!</p>
-      ) : null}
-    </div>
-  )
+  try {
+    const response = await fetchWithAuth('/api/auth/verify-token');
+    return response as UserData;
+  } catch (error) {
+    console.error('Token verification error:', error);
+    return null;
+  }
 }
-
 
 // lib/utils.ts 
 import { clsx, type ClassValue } from 'clsx'
@@ -5729,6 +5235,7 @@ export function subMonths(date: Date, amount: number) {
 
 // lib/types.ts 
 import { CoreMessage } from 'ai'
+import { Session as NextAuthSession } from 'next-auth'
 
 export type Message = CoreMessage & {
   id: string
@@ -5751,10 +5258,11 @@ export type ServerActionResult<Result> = Promise<
     }
 >
 
-export interface Session {
+export interface Session extends NextAuthSession {
   user: {
     id: string
     email: string
+    isAnonymous: boolean
   }
 }
 
@@ -5768,6 +5276,7 @@ export interface User extends Record<string, any> {
   email: string
   password: string
   salt: string
+  isAnonymous: boolean
 }
 
 export interface ModelInfo {

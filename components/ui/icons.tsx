@@ -490,7 +490,7 @@ function IconChevronUpDown({
 export {
   IconEdit,
   IconNextChat,
-  IconnAI,
+  IconOpenAI,
   IconKamiwazaAI,
   IconVercel,
   IconGitHub,

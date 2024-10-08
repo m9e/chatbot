@@ -33,7 +33,7 @@ import {
 } from '@/lib/utils'
 import { saveChat } from '@/app/actions'
 import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
-import { Chat, Message } from '@/lib/types'
+import { Chat, Message, ModelInfo } from '@/lib/types'
 import { auth } from '@/auth'
 
 async function confirmPurchase(symbol: string, price: number, amount: number) {
@@ -140,7 +140,8 @@ async function submitUserMessage({ message, baseUrl, modelName }: {
         role: 'user',
         content: message
       }
-    ]
+    ],
+    selectedModel: { baseUrl, modelName }
   })
 
   let textStream: undefined | ReturnType<typeof createStreamableValue<string>>
@@ -491,8 +492,10 @@ async function submitUserMessage({ message, baseUrl, modelName }: {
 //        }
 //      }
 //    }
+
   })
 
+  console.log('submitUserMessage result:', result);
   return {
     id: nanoid(),
     display: result.value
@@ -578,26 +581,26 @@ export const getUIStateFromAIState = (aiState: Chat) => {
         message.role === 'tool' ? (
           message.content.map(tool => {
             return tool.toolName === 'listStocks' ? (
-              <BotCard>
+            <BotCard>
                 {/* TODO: Infer types based on the tool result*/}
-                {/* @ts-expect-error */}
-                <Stocks props={tool.result} />
-              </BotCard>
-            ) : tool.toolName === 'showStockPrice' ? (
-              <BotCard>
-                {/* @ts-expect-error */}
-                <Stock props={tool.result} />
-              </BotCard>
-            ) : tool.toolName === 'showStockPurchase' ? (
-              <BotCard>
-                {/* @ts-expect-error */}
-                <Purchase props={tool.result} />
-              </BotCard>
-            ) : tool.toolName === 'getEvents' ? (
-              <BotCard>
-                {/* @ts-expect-error */}
-                <Events props={tool.result} />
-              </BotCard>
+              {/* @ts-expect-error */}
+              <Stocks props={tool.result} />
+            </BotCard>
+          ) : tool.toolName === 'showStockPrice' ? (
+            <BotCard>
+              {/* @ts-expect-error */}
+              <Stock props={tool.result} />
+            </BotCard>
+          ) : tool.toolName === 'showStockPurchase' ? (
+            <BotCard>
+              {/* @ts-expect-error */}
+              <Purchase props={tool.result} />
+            </BotCard>
+          ) : tool.toolName === 'getEvents' ? (
+            <BotCard>
+              {/* @ts-expect-error */}
+              <Events props={tool.result} />
+            </BotCard>
             ) : null
           })
         ) : message.role === 'user' ? (

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getKamiwazaDeployments, selectKamiwazaModel } from '@/app/kamiwaza/actions'
 import { ModelInfo } from '@/lib/types'
+import { updateChatWithSelectedModel } from '@/app/actions'
+import { useAIState } from 'ai/rsc'
 
 interface Deployment {
   m_name: string
@@ -16,6 +18,7 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
+  const [aiState] = useAIState()
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [fixedModel, setFixedModel] = useState<ModelInfo | null>(null)
@@ -51,19 +54,34 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   }, [])
 
   const handleModelChange = async (modelName: string) => {
+    let baseUrl: string
+    let modelInfo: ModelInfo
+
     if (fixedModel && modelName === fixedModel.modelName) {
-      setSelectedModel(modelName)
-      onModelSelect(fixedModel)
+      modelInfo = fixedModel
     } else {
       const selectedDeployment = deployments.find(d => d.m_name === modelName)
       if (selectedDeployment) {
-        const baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
-        await selectKamiwazaModel(baseUrl, modelName)
-        setSelectedModel(modelName)
-        onModelSelect({ baseUrl, modelName })
+        baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
+        modelInfo = { baseUrl, modelName }
+      } else {
+        console.error('Selected deployment not found')
+        return
       }
     }
-    console.log('Model selected:', { modelName });
+
+    setSelectedModel(modelName)
+    onModelSelect(modelInfo)
+
+    try {
+      await selectKamiwazaModel(modelInfo.baseUrl, modelInfo.modelName)
+      if (aiState.chatId) {
+        await updateChatWithSelectedModel(aiState.chatId, modelInfo)
+      }
+      console.log('Model selected and saved:', modelInfo)
+    } catch (error) {
+      console.error('Failed to save selected model:', error)
+    }
   }
 
   if (deployments.length === 0 && !fixedModel) {

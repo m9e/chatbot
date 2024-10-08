@@ -36,12 +36,20 @@ export async function authenticate(
       })
 
     if (parsedCredentials.success) {
-      await signIn('credentials', {
+      const result = await signIn('credentials', {
         email,
         password,
         redirect: false
       })
 
+      if (result?.error) {
+        return {
+          type: 'error',
+          resultCode: ResultCode.InvalidCredentials
+        }
+      }
+
+      // The session will be automatically updated with the new non-anonymous user data
       return {
         type: 'success',
         resultCode: ResultCode.UserLoggedIn

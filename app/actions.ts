@@ -3,16 +3,56 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { kv } from '@vercel/kv'
+import { ModelInfo } from '@/lib/types'
 
 import { auth } from '@/auth'
 import { type Chat } from '@/lib/types'
 
+export async function updateChatWithSelectedModel(chatId: string, selectedModel: ModelInfo) {
+  try {
+    if (!process.env.KV_URL) {
+      console.warn('KV_URL is not defined. Skipping database update.')
+      return { success: true, warning: 'Database update skipped' }
+    }
+
+    await kv.hset(`chat:${chatId}`, { selectedModel })
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to update chat with selected model:', error)
+    return { success: false, error: 'Failed to update chat' }
+  }
+}
+
 export async function getChats(userId?: string | null) {
+
+  const session = await auth()
+
   if (!userId) {
     return []
   }
 
-  // ... rest of the function
+  if (userId !== session?.user?.id) {
+    return {
+      error: 'Unauthorized'
+    }
+  }
+
+  try {
+    const pipeline = kv.pipeline()
+    const chats: string[] = await kv.zrange(`user:chat:${userId}`, 0, -1, {
+      rev: true
+    })
+
+    for (const chat of chats) {
+      pipeline.hgetall(chat)
+    }
+
+    const results = await pipeline.exec()
+
+    return results as Chat[]
+  } catch (error) {
+    return []
+  }
 }
 
 export async function getChat(id: string, userId: string) {
@@ -124,7 +164,7 @@ export async function shareChat(id: string) {
 export async function saveChat(chat: Chat) {
   const session = await auth()
 
-  if (session && session.user) {
+  if (session && session.user && !session.user.isAnonymous) {
     const pipeline = kv.pipeline()
     pipeline.hmset(`chat:${chat.id}`, chat)
     pipeline.zadd(`user:chat:${chat.userId}`, {

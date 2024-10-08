@@ -1,4 +1,5 @@
 import { CoreMessage } from 'ai'
+import { Session as NextAuthSession } from 'next-auth'
 
 export type Message = CoreMessage & {
   id: string
@@ -12,6 +13,7 @@ export interface Chat extends Record<string, any> {
   path: string
   messages: Message[]
   sharePath?: string
+  selectedModel?: ModelInfo | null
 }
 
 export type ServerActionResult<Result> = Promise<
@@ -21,10 +23,11 @@ export type ServerActionResult<Result> = Promise<
     }
 >
 
-export interface Session {
+export interface Session extends NextAuthSession {
   user: {
     id: string
     email: string
+    isAnonymous: boolean
   }
 }
 
@@ -38,6 +41,7 @@ export interface User extends Record<string, any> {
   email: string
   password: string
   salt: string
+  isAnonymous: boolean
 }
 
 export interface ModelInfo {

@@ -18,6 +18,9 @@ export interface UserMenuProps {
 }
 
 function getUserInitials(name: string) {
+  if (name === 'Anonymous User') {
+    return '??'
+  }
   const [firstName, lastName] = name.split(' ')
   return lastName ? `${firstName[0]}${lastName[0]}` : firstName.slice(0, 2)
 }
@@ -31,13 +34,24 @@ export function UserMenu({ user }: UserMenuProps) {
     router.push('/login')
   }
 
+  if (!user || user.username === 'Anonymous User') {
+    return (
+      <Button variant="ghost" className="pl-0" onClick={() => router.push('/login')}>
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/50 text-xs font-medium uppercase text-muted-foreground">
+          ??
+        </div>
+        <span className="ml-2 hidden md:block">Log In</span>
+      </Button>
+    );
+  }
+
   return (
     <div className="flex items-center justify-between">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="pl-0">
             <div className="flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-muted/50 text-xs font-medium uppercase text-muted-foreground">
-              {getUserInitials(user.full_name || user.username)}
+              {getUserInitials(user.full_name || user.username || 'Anonymous User')}
             </div>
             <span className="ml-2 hidden md:block">{user.username}</span>
           </Button>
