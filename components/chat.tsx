@@ -14,6 +14,8 @@ import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 
+
+
 export interface ChatProps extends React.ComponentProps<'div'> {
   initialMessages?: Message[]
   id?: string
@@ -25,7 +27,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const router = useRouter()
   const path = usePathname()
   const [input, setInput] = useState('')
-  const [messages] = useUIState()
+  const [messages, setMessages] = useUIState<typeof AI>()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
 
@@ -75,7 +77,31 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
     setSelectedModel(modelInfo)
   }
 
-  console.log('Chat messages:', messages);
+  // Add this to maintain messages from aiState
+  useEffect(() => {
+    if (aiState.messages?.length > 0) {
+      console.log('Updating messages from aiState:', aiState.messages)
+      // Update UI state with messages from aiState
+      setMessages(aiState.messages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role
+      })))
+    }
+  }, [aiState.messages])
+
+  // Add this to maintain selected model from aiState
+  useEffect(() => {
+    if (aiState.selectedModel && !selectedModel) {
+      console.log('Setting selected model from aiState:', aiState.selectedModel)
+      setSelectedModel(aiState.selectedModel)
+    }
+  }, [aiState.selectedModel, selectedModel])
+
+  // Debug logs
+  console.log('Chat render - messages:', messages)
+  console.log('Chat render - aiState:', aiState)
+  console.log('Chat render - id:', id)
 
   return (
     <div
@@ -94,7 +120,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
         )}
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
-        {messages.length ? (
+        {messages?.length > 0 ? ( // Add null check and ensure length check
           <ChatList 
             messages={messages} 
             isShared={false} 
@@ -107,7 +133,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
         <div className="w-full h-px" ref={visibilityRef} />
       </div>
       <ChatPanel
-        id={id}
+        id={id!}
         input={input}
         setInput={setInput}
         isAtBottom={isAtBottom}

@@ -44,7 +44,9 @@ export async function generateMetadata({
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
+  const { id } = params
   console.log('ChatPage: Starting with params:', params)
+
   const cookieStore = cookies()
   const token = cookieStore.get('token')?.value
   console.log('ChatPage: Token:', token?.substring(0, 10) + '...')
@@ -60,25 +62,21 @@ export default async function ChatPage({ params }: ChatPageProps) {
     }
   }
 
-  if (!userData) {
-    console.log('ChatPage: No userData found')
-  }
-
   const userId = userData?.id || 'anonymous'
-  console.log('ChatPage: Using userId:', userId)
-  const chat = await getChat(params.id, userId)
-  console.log('ChatPage: Retrieved chat:', chat)
-
-  if (!chat || 'error' in chat) {
-    console.log('ChatPage: No chat found or error, redirecting to home')
-    redirect('/')
-  }
+  const chat = await getChat(id, userId)
 
   return (
-    <AI initialAIState={{ chatId: chat.id, messages: chat.messages, selectedModel: chat.selectedModel }}>
+    <AI 
+      chatId={id} // Explicitly pass chatId here
+      initialAIState={{
+        chatId: id, // And here
+        messages: chat?.messages || [],
+        selectedModel: chat?.selectedModel
+      }}
+    >
       <Chat
-        id={chat.id}
-        initialMessages={chat.messages}
+        id={id}
+        initialMessages={chat?.messages || []}
         missingKeys={missingKeys}
       />
     </AI>

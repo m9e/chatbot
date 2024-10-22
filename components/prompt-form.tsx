@@ -22,12 +22,14 @@ interface PromptFormProps {
   input: string
   setInput: (value: string) => void
   selectedModel: ModelInfo | null
+  chatId?: string
 }
 
 export function PromptForm({
   input,
   setInput,
-  selectedModel
+  selectedModel,
+  chatId
 }: PromptFormProps) {
   const router = useRouter()
   const { formRef, onKeyDown } = useEnterSubmit()
@@ -44,8 +46,6 @@ export function PromptForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    console.log('PromptForm handleSubmit selectedModel:', selectedModel);
-
     if (!selectedModel) {
       toast.error('Please select a model before sending a message.')
       return
@@ -60,6 +60,16 @@ export function PromptForm({
     setInput('')
     if (!value) return
 
+    // Generate an ID if we don't have one
+    const currentId = chatId || nanoid()
+    
+    // Update URL if needed
+    if (!chatId) {
+      await router.push(`/chat/${currentId}`)
+      // Small delay to ensure URL updates
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
     // Optimistically add user message UI
     setMessages(currentMessages => [
       ...currentMessages,
@@ -73,6 +83,7 @@ export function PromptForm({
       // Submit and get response message
       const responseMessage = await submitUserMessage({
         message: value,
+        chatId: currentId,
         baseUrl: selectedModel.baseUrl,
         modelName: selectedModel.modelName
       })
