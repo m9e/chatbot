@@ -1,11 +1,10 @@
 import { type Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
-
-import { auth } from '@/auth'
+import { cookies } from 'next/headers'
 import { getChat, getMissingKeys } from '@/app/actions'
 import { Chat } from '@/components/chat'
 import { AI } from '@/lib/chat/actions'
-import { Session } from '@/lib/types'
+import { verifyToken } from '@/lib/kamiwazaApi'
 
 export interface ChatPageProps {
   params: {
@@ -16,13 +15,24 @@ export interface ChatPageProps {
 export async function generateMetadata({
   params
 }: ChatPageProps): Promise<Metadata> {
-  const session = await auth()
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  let userData = null
 
-  if (!session?.user) {
+  if (token) {
+    try {
+      userData = await verifyToken()
+    } catch (error) {
+      console.error('Error verifying token:', error)
+      return {}
+    }
+  }
+
+  if (!userData) {
     return {}
   }
 
-  const chat = await getChat(params.id, session.user.id)
+  const chat = await getChat(params.id, userData.id)
 
   if (!chat || 'error' in chat) {
     redirect('/')
@@ -34,35 +44,41 @@ export async function generateMetadata({
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  const session = (await auth()) as Session
+  const { id } = params
+  console.log('ChatPage: Starting with params:', params)
+
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  console.log('ChatPage: Token:', token?.substring(0, 10) + '...')
+  let userData = null
   const missingKeys = await getMissingKeys()
 
-  if (!session?.user && !process.env.ALLOW_ANONYMOUS) {
-    redirect(`/login?next=/chat/${params.id}`)
+  if (token) {
+    try {
+      userData = await verifyToken()
+      console.log('ChatPage: UserData after verify:', userData)
+    } catch (error) {
+      console.error('ChatPage: Error verifying token:', error)
+    }
   }
 
-  const userId = session?.user?.id ? session.user.id as string : 'anonymous'
-  const chat = await getChat(params.id, userId)
-  const isAnonymous = session?.user?.isAnonymous ? session.user.isAnonymous : true
+  const userId = userData?.id || 'anonymous'
+  const chat = await getChat(id, userId)
 
-  if (!chat || 'error' in chat) {
-    if (!isAnonymous) {
-      redirect('/')
-    }
-  } else {
-    if (chat?.userId !== session?.user?.id) {
-      notFound()
-    }
-
-    return (
-      <AI initialAIState={{ chatId: chat.id, messages: chat.messages }}>
-        <Chat
-          id={chat.id}
-          session={session}
-          initialMessages={chat.messages}
-          missingKeys={missingKeys}
-        />
-      </AI>
-    )
-  }
+  return (
+    <AI 
+      chatId={id} // Explicitly pass chatId here
+      initialAIState={{
+        chatId: id, // And here
+        messages: chat?.messages || [],
+        selectedModel: chat?.selectedModel
+      }}
+    >
+      <Chat
+        id={id}
+        initialMessages={chat?.messages || []}
+        missingKeys={missingKeys}
+      />
+    </AI>
+  )
 }

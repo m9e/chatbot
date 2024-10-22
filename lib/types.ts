@@ -1,9 +1,11 @@
 import { CoreMessage } from 'ai'
 import { Session as NextAuthSession } from 'next-auth'
+import { UserData } from '@/lib/kamiwazaApi'
 
 export type Message = CoreMessage & {
   id: string
 }
+
 
 export interface Chat extends Record<string, any> {
   id: string
@@ -14,6 +16,11 @@ export interface Chat extends Record<string, any> {
   messages: Message[]
   sharePath?: string
   selectedModel?: ModelInfo | null
+}
+
+export interface ModelInfo {
+  baseUrl: string
+  modelName: string
 }
 
 export type ServerActionResult<Result> = Promise<
@@ -42,9 +49,4 @@ export interface User extends Record<string, any> {
   password: string
   salt: string
   isAnonymous: boolean
-}
-
-export interface ModelInfo {
-  baseUrl: string
-  modelName: string
 }

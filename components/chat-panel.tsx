@@ -68,22 +68,26 @@ export function ChatPanel({
     }
 
     setInput('')
-    // Optimistically add user message UI
-    setMessages(currentMessages => [
-      ...currentMessages,
-      {
-        id: nanoid(),
-        display: <UserMessage>{value}</UserMessage>
-      }
-    ])
+    
+    // Ensure we have an ID
+    const currentId = id || nanoid()
+    console.log('ChatPanel handleSubmit with ID:', currentId)
 
     try {
-      // Submit and get response message
+      // First update the URL if needed
+      if (!id) {
+        await router.push(`/chat/${currentId}`)
+        // Small delay to ensure URL updates
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
       const responseMessage = await submitUserMessage({
         message: value,
+        chatId: currentId,
         baseUrl: selectedModel.baseUrl,
         modelName: selectedModel.modelName
       })
+      
       setMessages(currentMessages => [...currentMessages, responseMessage])
     } catch (error) {
       console.error('Error submitting message:', error)
@@ -161,6 +165,7 @@ export function ChatPanel({
           setInput={setInput}
           isLoading={false}
           selectedModel={selectedModel}  // Make sure this line exists
+          chatId={id}
         />
         <FooterText className="hidden sm:block" />
       </div>

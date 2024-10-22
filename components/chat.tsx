@@ -8,48 +8,50 @@ import { ModelSelector } from '@/components/model-selector'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
 import { useEffect, useState } from 'react'
 import { useUIState, useAIState } from 'ai/rsc'
-import { Message, Session, ModelInfo } from '@/lib/types'
+import { Message, ModelInfo } from '@/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
 import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
+import { useAuth } from '@/lib/auth-context'
+
+
 
 export interface ChatProps extends React.ComponentProps<'div'> {
   initialMessages?: Message[]
   id?: string
-  session?: Session
   missingKeys: string[]
 }
 
-export function Chat({ id, className, session, missingKeys }: ChatProps) {
+export function Chat({ id, className, missingKeys }: ChatProps) {
+  const { user, loading } = useAuth()
   const router = useRouter()
   const path = usePathname()
   const [input, setInput] = useState('')
-  const [messages] = useUIState()
+  const [messages, setMessages] = useUIState<typeof AI>()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const isAnonymous = session?.user?.isAnonymous ?? true
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
-  const userId = session?.user?.id || 'anonymous';
+  const userId = user?.id || 'anonymous'
 
   useEffect(() => {
     const checkAnonymous = async () => {
       const response = await fetch('/api/allow-anonymous')
       const { allowAnonymous } = await response.json()
-      if (!allowAnonymous && isAnonymous) {
+      if (!allowAnonymous && !user && !loading) {
         router.push('/login')
       }
     }
     checkAnonymous()
-  }, [isAnonymous, router])
+  }, [user, loading, router])
 
   useEffect(() => {
-    if (session?.user || isAnonymous) {
-      if (!path.includes('chat') && messages.length === 1 && !isAnonymous) {
+    if (user || loading) {
+      if (!path.includes('chat') && messages.length === 1 && !loading) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
-  }, [id, path, session?.user, messages, isAnonymous])
+  }, [id, path, user, messages, loading])
 
   useEffect(() => {
     const messagesLength = aiState.messages?.length
@@ -75,7 +77,31 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
     setSelectedModel(modelInfo)
   }
 
-  console.log('Chat messages:', messages);
+  // Add this to maintain messages from aiState
+  useEffect(() => {
+    if (aiState.messages?.length > 0) {
+      console.log('Updating messages from aiState:', aiState.messages)
+      // Update UI state with messages from aiState
+      setMessages(aiState.messages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role
+      })))
+    }
+  }, [aiState.messages])
+
+  // Add this to maintain selected model from aiState
+  useEffect(() => {
+    if (aiState.selectedModel && !selectedModel) {
+      console.log('Setting selected model from aiState:', aiState.selectedModel)
+      setSelectedModel(aiState.selectedModel)
+    }
+  }, [aiState.selectedModel, selectedModel])
+
+  // Debug logs
+  console.log('Chat render - messages:', messages)
+  console.log('Chat render - aiState:', aiState)
+  console.log('Chat render - id:', id)
 
   return (
     <div
@@ -94,15 +120,20 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
         )}
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
-        {messages.length ? (
-          <ChatList messages={messages} isShared={false} session={session} selectedModel={selectedModel} />
+        {messages?.length > 0 ? ( // Add null check and ensure length check
+          <ChatList 
+            messages={messages} 
+            isShared={false} 
+            user={user}
+            selectedModel={selectedModel} 
+          />
         ) : (
           <EmptyScreen />
         )}
         <div className="w-full h-px" ref={visibilityRef} />
       </div>
       <ChatPanel
-        id={id}
+        id={id!}
         input={input}
         setInput={setInput}
         isAtBottom={isAtBottom}

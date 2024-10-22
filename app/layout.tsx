@@ -7,7 +7,8 @@ import { TailwindIndicator } from '@/components/tailwind-indicator'
 import { Providers } from '@/components/providers'
 import { Header } from '@/components/header'
 import { Toaster } from '@/components/ui/sonner'
-import { ModelProvider } from '@/lib/ModelContext';
+import { ModelProvider } from '@/lib/ModelContext'
+import { AuthProvider } from '@/lib/auth-context'
 
 export const metadata = {
   metadataBase: process.env.VERCEL_URL
@@ -53,11 +54,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex flex-col min-h-screen">
-            <Header />
-            <main className="flex flex-col flex-1 bg-muted/50">{children}</main>
-          </div>
-          <TailwindIndicator />
+          <AuthProvider>
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex flex-col flex-1 bg-muted/50">{children}</main>
+            </div>
+            <TailwindIndicator />
+          </AuthProvider>
         </Providers>
       </body>
     </html>

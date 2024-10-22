@@ -2,11 +2,24 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { kv } from '@vercel/kv'
 import { ModelInfo } from '@/lib/types'
-
-import { auth } from '@/auth'
+import { cookies } from 'next/headers'
+import { verifyToken } from '@/lib/kamiwazaApi'
 import { type Chat } from '@/lib/types'
+import { redis } from '@/lib/redis'
+
+async function getUserData() {
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  if (!token) return null
+
+  try {
+    return await verifyToken()
+  } catch (error) {
+    console.error('Error verifying token:', error)
+    return null
+  }
+}
 
 export async function updateChatWithSelectedModel(chatId: string, selectedModel: ModelInfo) {
   try {
@@ -15,7 +28,7 @@ export async function updateChatWithSelectedModel(chatId: string, selectedModel:
       return { success: true, warning: 'Database update skipped' }
     }
 
-    await kv.hset(`chat:${chatId}`, { selectedModel })
+    await redis.hset(`chat:${chatId}`, { selectedModel })
     return { success: true }
   } catch (error) {
     console.error('Failed to update chat with selected model:', error)
@@ -24,100 +37,132 @@ export async function updateChatWithSelectedModel(chatId: string, selectedModel:
 }
 
 export async function getChats(userId?: string | null) {
+  console.log('getChats: Starting for userId:', userId)
+  const userData = await getUserData()
 
-  const session = await auth()
-
-  if (!userId) {
+  if (!userId || !userData) {
     return []
   }
 
-  if (userId !== session?.user?.id) {
-    return {
-      error: 'Unauthorized'
-    }
+  if (userId !== userData.id) {
+    return { error: 'Unauthorized' }
   }
 
   try {
-    const pipeline = kv.pipeline()
-    const chats: string[] = await kv.zrange(`user:chat:${userId}`, 0, -1, {
-      rev: true
-    })
+    // Get chat IDs from sorted set
+    const chatIds = await redis.zrange(`user:chat:${userId}`, 0, -1, 'REV')
+    console.log('getChats: Found chat IDs:', chatIds)
 
-    for (const chat of chats) {
-      pipeline.hgetall(chat)
+    if (!chatIds.length) return []
+
+    // Get all chats data
+    const pipeline = redis.pipeline()
+    for (const chatId of chatIds) {
+      pipeline.hgetall(chatId)
     }
 
     const results = await pipeline.exec()
+    const chats = results
+      ?.map(([err, data]) => {
+        if (err || !data) return null
+        return {
+          ...data,
+          messages: JSON.parse(data.messages || '[]'),
+          createdAt: new Date(data.createdAt),
+          selectedModel: data.selectedModel ? JSON.parse(data.selectedModel) : null
+        }
+      })
+      .filter(Boolean) as Chat[]
 
-    return results as Chat[]
+    return chats
   } catch (error) {
+    console.error('getChats: Error:', error)
     return []
   }
 }
 
 export async function getChat(id: string, userId: string) {
-  const session = await auth()
+  console.log('getChat: Starting with id:', id, 'userId:', userId)
+  
+  try {
+    // Get chat data as a hash
+    const exists = await redis.exists(`chat:${id}`)
+    console.log('getChat: Chat exists?', exists)
+    
+    const chatData = await redis.hgetall(`chat:${id}`)
+    console.log('getChat: Raw chat data:', chatData)
 
-  if (userId !== session?.user?.id) {
-    return {
-      error: 'Unauthorized'
+    if (!chatData || Object.keys(chatData).length === 0) {
+      // List all keys to debug
+      const allKeys = await redis.keys('chat:*')
+      console.log('getChat: All chat keys:', allKeys)
+      console.log('getChat: No chat found')
+      return null
     }
-  }
 
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+    // Parse stored JSON fields
+    const chat: Chat = {
+      ...chatData,
+      messages: JSON.parse(chatData.messages || '[]'),
+      createdAt: new Date(chatData.createdAt),
+      selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
+    }
+    console.log('getChat: Parsed chat:', chat)
 
-  if (!chat || (userId && chat.userId !== userId)) {
+    return chat
+  } catch (error) {
+    console.error('getChat: Error:', error)
     return null
   }
-
-  return chat
 }
 
 export async function removeChat({ id, path }: { id: string; path: string }) {
-  const session = await auth()
+  const userData = await getUserData()
 
-  if (!session) {
+  if (!userData) {
     return {
       error: 'Unauthorized'
     }
   }
 
-  // Convert uid to string for consistent comparison with session.user.id
-  const uid = String(await kv.hget(`chat:${id}`, 'userId'))
+  // Get userId from Redis hash
+  const uid = await redis.hget(`chat:${id}`, 'userId')
 
-  if (uid !== session?.user?.id) {
+  if (uid !== userData.id) {
     return {
       error: 'Unauthorized'
     }
   }
 
-  await kv.del(`chat:${id}`)
-  await kv.zrem(`user:chat:${session.user.id}`, `chat:${id}`)
+  // Use pipeline for atomic operations
+  const pipeline = redis.pipeline()
+  pipeline.del(`chat:${id}`)
+  pipeline.zrem(`user:chat:${userData.id}`, `chat:${id}`)
+  await pipeline.exec()
 
   revalidatePath('/')
   return revalidatePath(path)
 }
 
 export async function clearChats() {
-  const session = await auth()
+  const userData = await getUserData()
 
-  if (!session?.user?.id) {
+  if (!userData?.id) {
     return {
       error: 'Unauthorized'
     }
   }
 
-  const chats: string[] = await kv.zrange(`user:chat:${session.user.id}`, 0, -1)
+  const chats: string[] = await redis.zrange(`user:chat:${userData.id}`, 0, -1)
   if (!chats.length) {
     return redirect('/')
   }
-  const pipeline = kv.pipeline()
 
+  const pipeline = redis.pipeline()
   for (const chat of chats) {
     pipeline.del(chat)
-    pipeline.zrem(`user:chat:${session.user.id}`, chat)
+    pipeline.zrem(`user:chat:${userData.id}`, chat)
   }
-
   await pipeline.exec()
 
   revalidatePath('/')
@@ -125,53 +170,101 @@ export async function clearChats() {
 }
 
 export async function getSharedChat(id: string) {
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  try {
+    const chatData = await redis.hgetall(`chat:${id}`)
+    
+    if (!chatData || !chatData.sharePath) {
+      return null
+    }
 
-  if (!chat || !chat.sharePath) {
+    // Parse stored JSON fields
+    const chat: Chat = {
+      ...chatData,
+      messages: JSON.parse(chatData.messages || '[]'),
+      createdAt: new Date(chatData.createdAt),
+      selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
+    }
+
+    return chat
+  } catch (error) {
+    console.error('getSharedChat: Error:', error)
     return null
   }
-
-  return chat
 }
 
 export async function shareChat(id: string) {
-  const session = await auth()
+  const userData = await getUserData()
 
-  if (!session?.user?.id) {
+  if (!userData?.id) {
     return {
       error: 'Unauthorized'
     }
   }
 
-  const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  try {
+    const chatData = await redis.hgetall(`chat:${id}`)
+    if (!chatData || chatData.userId !== userData.id) {
+      return {
+        error: 'Something went wrong'
+      }
+    }
 
-  if (!chat || chat.userId !== session.user.id) {
+    // Parse stored JSON fields
+    const chat: Chat = {
+      ...chatData,
+      messages: JSON.parse(chatData.messages || '[]'),
+      createdAt: new Date(chatData.createdAt),
+      selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
+    }
+
+    const payload = {
+      ...chat,
+      sharePath: `/share/${chat.id}`
+    }
+
+    // Prepare data for Redis storage
+    const saveData = {
+      ...payload,
+      messages: JSON.stringify(payload.messages),
+      createdAt: payload.createdAt.toISOString(),
+      selectedModel: JSON.stringify(payload.selectedModel)
+    }
+
+    await redis.hmset(`chat:${chat.id}`, saveData)
+    return payload
+  } catch (error) {
+    console.error('shareChat: Error:', error)
     return {
       error: 'Something went wrong'
     }
   }
-
-  const payload = {
-    ...chat,
-    sharePath: `/share/${chat.id}`
-  }
-
-  await kv.hmset(`chat:${chat.id}`, payload)
-
-  return payload
 }
 
 export async function saveChat(chat: Chat) {
-  const session = await auth()
+  console.log('saveChat: Starting with chat ID:', chat.id)
+  
+  if (!chat.id) {
+    console.error('saveChat: No chat ID provided')
+    return false
+  }
 
-  if (session && session.user && !session.user.isAnonymous) {
-    const pipeline = kv.pipeline()
-    pipeline.hmset(`chat:${chat.id}`, chat)
-    pipeline.zadd(`user:chat:${chat.userId}`, {
-      score: Date.now(),
-      member: `chat:${chat.id}`
-    })
-    await pipeline.exec()
+  const chatKey = `chat:${chat.id}`
+  console.log('saveChat: Using Redis key:', chatKey)
+
+  try {
+    const chatData = {
+      ...chat,
+      messages: JSON.stringify(chat.messages),
+      createdAt: chat.createdAt.toISOString(),
+      selectedModel: JSON.stringify(chat.selectedModel)
+    }
+
+    await redis.hmset(chatKey, chatData)
+    console.log('saveChat: Successfully saved chat with ID:', chat.id)
+    return true
+  } catch (error) {
+    console.error('saveChat: Error saving chat:', error)
+    return false
   }
 }
 
