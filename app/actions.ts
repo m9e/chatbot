@@ -68,17 +68,32 @@ export async function getChats(userId?: string | null) {
 }
 
 export async function getChat(id: string, userId: string) {
+  console.log('getChat: Starting with id:', id, 'userId:', userId)
   const userData = await getUserData()
+  console.log('getChat: UserData:', userData)
 
+  // Allow anonymous access if ALLOW_ANONYMOUS is true
+  if (userId === 'anonymous' && process.env.ALLOW_ANONYMOUS === 'true') {
+    const chat = await kv.hgetall<Chat>(`chat:${id}`)
+    if (!chat) {
+      return null
+    }
+    return chat
+  }
+
+  // For logged-in users, verify ownership
   if (userId !== userData?.id) {
+    console.log('getChat: Unauthorized - userId mismatch')
     return {
       error: 'Unauthorized'
     }
   }
 
   const chat = await kv.hgetall<Chat>(`chat:${id}`)
+  console.log('getChat: Retrieved chat:', chat)
 
   if (!chat || (userId && chat.userId !== userId)) {
+    console.log('getChat: No chat found or userId mismatch')
     return null
   }
 
@@ -174,16 +189,31 @@ export async function shareChat(id: string) {
 }
 
 export async function saveChat(chat: Chat) {
+  console.log('saveChat: Starting with chat:', chat)
   const userData = await getUserData()
+  console.log('saveChat: UserData:', userData)
 
-  if (userData) {
-    const pipeline = kv.pipeline()
-    pipeline.hmset(`chat:${chat.id}`, chat)
-    pipeline.zadd(`user:chat:${chat.userId}`, {
-      score: Date.now(),
-      member: `chat:${chat.id}`
-    })
-    await pipeline.exec()
+  // Allow saving for both authenticated users and anonymous users if enabled
+  if (userData || (chat.userId === 'anonymous' && process.env.ALLOW_ANONYMOUS === 'true')) {
+    try {
+      const pipeline = kv.pipeline()
+      pipeline.hmset(`chat:${chat.id}`, chat)
+      
+      // Only add to user's chat list if they're authenticated
+      if (userData) {
+        pipeline.zadd(`user:chat:${chat.userId}`, {
+          score: Date.now(),
+          member: `chat:${chat.id}`
+        })
+      }
+      
+      await pipeline.exec()
+      console.log('saveChat: Successfully saved chat')
+    } catch (error) {
+      console.error('saveChat: Error saving chat:', error)
+    }
+  } else {
+    console.log('saveChat: No userData and anonymous not allowed, skipping save')
   }
 }
 

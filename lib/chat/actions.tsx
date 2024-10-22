@@ -595,26 +595,27 @@ export const AI = createAI<AIState, UIState>({
   },
   onSetAIState: async ({ state, done }) => {
     'use server'
+    console.log('onSetAIState: Starting with state:', state, 'done:', done)
 
     if (!done) return
 
     const cookieStore = cookies()
     const token = cookieStore.get('token')?.value
+    console.log('onSetAIState: Token:', token?.substring(0, 10) + '...')
     let userData = null
 
     if (token) {
       try {
         userData = await verifyToken()
+        console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
-        console.error('Error verifying token:', error)
+        console.error('onSetAIState: Error verifying token:', error)
       }
     }
 
-    if (!userData) return
-
     const { chatId, messages, selectedModel } = state
     const createdAt = new Date()
-    const userId = userData.id
+    const userId = userData?.id || 'anonymous'
     const path = `/chat/${chatId}`
 
     const firstMessageContent = messages[0].content as string
@@ -630,6 +631,7 @@ export const AI = createAI<AIState, UIState>({
       selectedModel
     }
 
+    console.log('onSetAIState: Saving chat with userId:', userId)
     await saveChat(chat)
   }
 })

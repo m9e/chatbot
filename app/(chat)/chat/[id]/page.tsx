@@ -44,43 +44,43 @@ export async function generateMetadata({
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
+  console.log('ChatPage: Starting with params:', params)
   const cookieStore = cookies()
   const token = cookieStore.get('token')?.value
+  console.log('ChatPage: Token:', token?.substring(0, 10) + '...')
   let userData = null
   const missingKeys = await getMissingKeys()
 
   if (token) {
     try {
       userData = await verifyToken()
+      console.log('ChatPage: UserData after verify:', userData)
     } catch (error) {
-      console.error('Error verifying token:', error)
+      console.error('ChatPage: Error verifying token:', error)
     }
   }
 
-  if (!userData && !process.env.ALLOW_ANONYMOUS) {
-    redirect(`/login?next=/chat/${params.id}`)
+  if (!userData) {
+    console.log('ChatPage: No userData found')
   }
 
   const userId = userData?.id || 'anonymous'
+  console.log('ChatPage: Using userId:', userId)
   const chat = await getChat(params.id, userId)
+  console.log('ChatPage: Retrieved chat:', chat)
 
   if (!chat || 'error' in chat) {
-    if (userData) { // If user is logged in but can't access the chat
-      redirect('/')
-    }
-  } else {
-    if (chat?.userId !== userId) {
-      notFound()
-    }
-
-    return (
-      <AI initialAIState={{ chatId: chat.id, messages: chat.messages }}>
-        <Chat
-          id={chat.id}
-          initialMessages={chat.messages}
-          missingKeys={missingKeys}
-        />
-      </AI>
-    )
+    console.log('ChatPage: No chat found or error, redirecting to home')
+    redirect('/')
   }
+
+  return (
+    <AI initialAIState={{ chatId: chat.id, messages: chat.messages, selectedModel: chat.selectedModel }}>
+      <Chat
+        id={chat.id}
+        initialMessages={chat.messages}
+        missingKeys={missingKeys}
+      />
+    </AI>
+  )
 }
