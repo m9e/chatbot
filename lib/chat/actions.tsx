@@ -34,7 +34,8 @@ import {
 import { saveChat } from '@/app/actions'
 import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
 import { Chat, Message, ModelInfo } from '@/lib/types'
-import { auth } from '@/auth'
+import { cookies } from 'next/headers'
+import { verifyToken } from '@/lib/kamiwazaApi'
 
 async function confirmPurchase(symbol: string, price: number, amount: number) {
   'use server'
@@ -518,6 +519,48 @@ export type UIState = {
   display: React.ReactNode
 }[]
 
+export const getUIStateFromAIState = (aiState: Chat) => {
+  return aiState.messages
+    .filter(message => message.role !== 'system')
+    .map((message, index) => ({
+      id: `${aiState.chatId}-${index}`,
+      display:
+        message.role === 'tool' ? (
+          message.content.map(tool => {
+            return tool.toolName === 'listStocks' ? (
+              <BotCard>
+                {/* @ts-expect-error */}
+                <Stocks props={tool.result} />
+              </BotCard>
+            ) : tool.toolName === 'showStockPrice' ? (
+              <BotCard>
+                {/* @ts-expect-error */}
+                <Stock props={tool.result} />
+              </BotCard>
+            ) : tool.toolName === 'showStockPurchase' ? (
+              <BotCard>
+                {/* @ts-expect-error */}
+                <Purchase props={tool.result} />
+              </BotCard>
+            ) : tool.toolName === 'getEvents' ? (
+              <BotCard>
+                {/* @ts-expect-error */}
+                <Events props={tool.result} />
+              </BotCard>
+            ) : null
+          })
+        ) : message.role === 'user' ? (
+          <UserMessage>{message.content as string}</UserMessage>
+        ) : message.role === 'assistant' &&
+          typeof message.content === 'string' ? (
+          <BotMessage 
+            content={message.content} 
+            selectedModel={aiState.selectedModel} 
+          />
+        ) : null
+    }))
+}
+
 export const AI = createAI<AIState, UIState>({
   actions: {
     submitUserMessage,
@@ -529,31 +572,49 @@ export const AI = createAI<AIState, UIState>({
   onGetUIState: async () => {
     'use server'
 
-    const session = await auth()
+    const cookieStore = cookies()
+    const token = cookieStore.get('token')?.value
+    let userData = null
 
-    if (session && session.user) {
+    if (token) {
+      try {
+        userData = await verifyToken()
+      } catch (error) {
+        console.error('Error verifying token:', error)
+      }
+    }
+
+    if (userData) {
       const aiState = getAIState() as Chat
-
       if (aiState) {
         const uiState = getUIStateFromAIState(aiState)
         return uiState
       }
-    } else {
-      return
     }
+    return
   },
   onSetAIState: async ({ state, done }) => {
     'use server'
 
     if (!done) return
 
-    const session = await auth()
-    if (!session || !session.user) return
+    const cookieStore = cookies()
+    const token = cookieStore.get('token')?.value
+    let userData = null
 
-    const { chatId, messages } = state
+    if (token) {
+      try {
+        userData = await verifyToken()
+      } catch (error) {
+        console.error('Error verifying token:', error)
+      }
+    }
 
+    if (!userData) return
+
+    const { chatId, messages, selectedModel } = state
     const createdAt = new Date()
-    const userId = session.user.id as string
+    const userId = userData.id
     const path = `/chat/${chatId}`
 
     const firstMessageContent = messages[0].content as string
@@ -565,49 +626,10 @@ export const AI = createAI<AIState, UIState>({
       userId,
       createdAt,
       messages,
-      path
+      path,
+      selectedModel
     }
 
     await saveChat(chat)
   }
 })
-
-export const getUIStateFromAIState = (aiState: Chat) => {
-  return aiState.messages
-    .filter(message => message.role !== 'system')
-    .map((message, index) => ({
-      id: `${aiState.chatId}-${index}`,
-      display:
-        message.role === 'tool' ? (
-          message.content.map(tool => {
-            return tool.toolName === 'listStocks' ? (
-            <BotCard>
-                {/* TODO: Infer types based on the tool result*/}
-              {/* @ts-expect-error */}
-              <Stocks props={tool.result} />
-            </BotCard>
-          ) : tool.toolName === 'showStockPrice' ? (
-            <BotCard>
-              {/* @ts-expect-error */}
-              <Stock props={tool.result} />
-            </BotCard>
-          ) : tool.toolName === 'showStockPurchase' ? (
-            <BotCard>
-              {/* @ts-expect-error */}
-              <Purchase props={tool.result} />
-            </BotCard>
-          ) : tool.toolName === 'getEvents' ? (
-            <BotCard>
-              {/* @ts-expect-error */}
-              <Events props={tool.result} />
-            </BotCard>
-            ) : null
-          })
-        ) : message.role === 'user' ? (
-          <UserMessage>{message.content as string}</UserMessage>
-        ) : message.role === 'assistant' &&
-          typeof message.content === 'string' ? (
-          <BotMessage content={message.content} />
-        ) : null
-    }))
-}

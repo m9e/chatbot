@@ -16,27 +16,19 @@ import { SidebarMobile } from './sidebar-mobile'
 import { SidebarToggle } from './sidebar-toggle'
 import { ChatHistory } from './chat-history'
 import { verifyToken, UserData } from '@/lib/kamiwazaApi'
+import { useAuth } from '@/lib/auth-context'
 
 function UserOrLogin() {
-  const [user, setUser] = useState<UserData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, loading } = useAuth()
   const [allowAnonymous, setAllowAnonymous] = useState(false)
 
   useEffect(() => {
-    async function checkUser() {
-      try {
-        const userData = await verifyToken()
-        setUser(userData)
-        const response = await fetch('/api/allow-anonymous')
-        const { allowAnonymous } = await response.json()
-        setAllowAnonymous(allowAnonymous)
-      } catch (error) {
-        console.error('Error verifying token:', error)
-      } finally {
-        setLoading(false)
-      }
+    async function checkAnonymous() {
+      const response = await fetch('/api/allow-anonymous')
+      const { allowAnonymous } = await response.json()
+      setAllowAnonymous(allowAnonymous)
     }
-    checkUser()
+    checkAnonymous()
   }, [])
 
   if (loading) {

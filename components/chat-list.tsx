@@ -5,22 +5,23 @@ import Link from 'next/link'
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons'
 import { ChatMessage } from '@/components/chat-message'
 import React from 'react'
+import { UserData } from '@/lib/kamiwazaApi'
 
 export interface ChatList {
   messages: UIState
-  session?: Session
+  user: UserData | null
   isShared: boolean
   selectedModel: ModelInfo | null
 }
 
-export function ChatList({ messages, session, isShared, selectedModel }: ChatList) {
+export function ChatList({ messages, user, isShared, selectedModel }: ChatList) {
   if (!messages.length) {
     return null
   }
 
   return (
     <div className="relative mx-auto max-w-2xl px-4">
-      {!isShared && !session ? (
+      {!isShared && !user ? (
         <>
           <div className="group relative mb-4 flex items-start md:-ml-12">
             <div className="bg-background flex size-[25px] shrink-0 select-none items-center justify-center rounded-md border shadow-sm">

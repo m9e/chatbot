@@ -1,11 +1,10 @@
 import { type Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
-
-import { auth } from '@/auth'
+import { cookies } from 'next/headers'
 import { getChat, getMissingKeys } from '@/app/actions'
 import { Chat } from '@/components/chat'
 import { AI } from '@/lib/chat/actions'
-import { Session } from '@/lib/types'
+import { verifyToken } from '@/lib/kamiwazaApi'
 
 export interface ChatPageProps {
   params: {
@@ -16,13 +15,24 @@ export interface ChatPageProps {
 export async function generateMetadata({
   params
 }: ChatPageProps): Promise<Metadata> {
-  const session = await auth()
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  let userData = null
 
-  if (!session?.user) {
+  if (token) {
+    try {
+      userData = await verifyToken()
+    } catch (error) {
+      console.error('Error verifying token:', error)
+      return {}
+    }
+  }
+
+  if (!userData) {
     return {}
   }
 
-  const chat = await getChat(params.id, session.user.id)
+  const chat = await getChat(params.id, userData.id)
 
   if (!chat || 'error' in chat) {
     redirect('/')
@@ -34,23 +44,32 @@ export async function generateMetadata({
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  const session = (await auth()) as Session
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  let userData = null
   const missingKeys = await getMissingKeys()
 
-  if (!session?.user && !process.env.ALLOW_ANONYMOUS) {
+  if (token) {
+    try {
+      userData = await verifyToken()
+    } catch (error) {
+      console.error('Error verifying token:', error)
+    }
+  }
+
+  if (!userData && !process.env.ALLOW_ANONYMOUS) {
     redirect(`/login?next=/chat/${params.id}`)
   }
 
-  const userId = session?.user?.id ? session.user.id as string : 'anonymous'
+  const userId = userData?.id || 'anonymous'
   const chat = await getChat(params.id, userId)
-  const isAnonymous = session?.user?.isAnonymous ? session.user.isAnonymous : true
 
   if (!chat || 'error' in chat) {
-    if (!isAnonymous) {
+    if (userData) { // If user is logged in but can't access the chat
       redirect('/')
     }
   } else {
-    if (chat?.userId !== session?.user?.id) {
+    if (chat?.userId !== userId) {
       notFound()
     }
 
@@ -58,7 +77,6 @@ export default async function ChatPage({ params }: ChatPageProps) {
       <AI initialAIState={{ chatId: chat.id, messages: chat.messages }}>
         <Chat
           id={chat.id}
-          session={session}
           initialMessages={chat.messages}
           missingKeys={missingKeys}
         />

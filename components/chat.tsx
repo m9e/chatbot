@@ -8,48 +8,48 @@ import { ModelSelector } from '@/components/model-selector'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
 import { useEffect, useState } from 'react'
 import { useUIState, useAIState } from 'ai/rsc'
-import { Message, Session, ModelInfo } from '@/lib/types'
+import { Message, ModelInfo } from '@/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
 import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
+import { useAuth } from '@/lib/auth-context'
 
 export interface ChatProps extends React.ComponentProps<'div'> {
   initialMessages?: Message[]
   id?: string
-  session?: Session
   missingKeys: string[]
 }
 
-export function Chat({ id, className, session, missingKeys }: ChatProps) {
+export function Chat({ id, className, missingKeys }: ChatProps) {
+  const { user, loading } = useAuth()
   const router = useRouter()
   const path = usePathname()
   const [input, setInput] = useState('')
   const [messages] = useUIState()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const isAnonymous = session?.user?.isAnonymous ?? true
 
   const [_, setNewChatId] = useLocalStorage('newChatId', id)
-  const userId = session?.user?.id || 'anonymous';
+  const userId = user?.id || 'anonymous'
 
   useEffect(() => {
     const checkAnonymous = async () => {
       const response = await fetch('/api/allow-anonymous')
       const { allowAnonymous } = await response.json()
-      if (!allowAnonymous && isAnonymous) {
+      if (!allowAnonymous && !user && !loading) {
         router.push('/login')
       }
     }
     checkAnonymous()
-  }, [isAnonymous, router])
+  }, [user, loading, router])
 
   useEffect(() => {
-    if (session?.user || isAnonymous) {
-      if (!path.includes('chat') && messages.length === 1 && !isAnonymous) {
+    if (user || loading) {
+      if (!path.includes('chat') && messages.length === 1 && !loading) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
-  }, [id, path, session?.user, messages, isAnonymous])
+  }, [id, path, user, messages, loading])
 
   useEffect(() => {
     const messagesLength = aiState.messages?.length
@@ -95,7 +95,12 @@ export function Chat({ id, className, session, missingKeys }: ChatProps) {
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
         {messages.length ? (
-          <ChatList messages={messages} isShared={false} session={session} selectedModel={selectedModel} />
+          <ChatList 
+            messages={messages} 
+            isShared={false} 
+            user={user}
+            selectedModel={selectedModel} 
+          />
         ) : (
           <EmptyScreen />
         )}

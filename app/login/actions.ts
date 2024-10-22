@@ -1,16 +1,8 @@
 'use server'
 
-import { signIn } from '@/auth'
-import { User } from '@/lib/types'
-import { AuthError } from 'next-auth'
-import { z } from 'zod'
-import { kv } from '@vercel/kv'
+import { login } from '@/lib/kamiwazaApi'
+import { cookies } from 'next/headers'
 import { ResultCode } from '@/lib/utils'
-
-export async function getUser(email: string) {
-  const user = await kv.hgetall<User>(`user:${email}`)
-  return user
-}
 
 interface Result {
   type: string
@@ -21,38 +13,19 @@ export async function authenticate(
   _prevState: Result | undefined,
   formData: FormData
 ): Promise<Result | undefined> {
+  const username = formData.get('username') as string
+  const password = formData.get('password') as string
+
   try {
-    const email = formData.get('email')
-    const password = formData.get('password')
-
-    const parsedCredentials = z
-      .object({
-        email: z.string().email(),
-        password: z.string().min(6)
-      })
-      .safeParse({
-        email,
-        password
-      })
-
-    if (parsedCredentials.success) {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false
-      })
-
-      if (result?.error) {
-        return {
-          type: 'error',
-          resultCode: ResultCode.InvalidCredentials
-        }
+    const loginResult = await login(username, password)
+    if (loginResult.access_token) {
+      cookies().set('token', loginResult.access_token)
+      if (loginResult.refresh_token) {
+        cookies().set('refreshToken', loginResult.refresh_token)
       }
-
-      // The session will be automatically updated with the new non-anonymous user data
       return {
         type: 'success',
-        resultCode: ResultCode.UserLoggedIn
+        resultCode: ResultCode.Success
       }
     } else {
       return {
@@ -61,19 +34,10 @@ export async function authenticate(
       }
     }
   } catch (error) {
-    if (error instanceof AuthError) {
-      switch (error.type) {
-        case 'CredentialsSignin':
-          return {
-            type: 'error',
-            resultCode: ResultCode.InvalidCredentials
-          }
-        default:
-          return {
-            type: 'error',
-            resultCode: ResultCode.UnknownError
-          }
-      }
+    console.error('Login error:', error)
+    return {
+      type: 'error',
+      resultCode: ResultCode.UnknownError
     }
   }
 }

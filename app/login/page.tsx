@@ -1,13 +1,21 @@
-import { auth } from '@/auth'
 import LoginForm from '@/components/login-form'
-import { Session } from '@/lib/types'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { verifyToken } from '@/lib/kamiwazaApi'
 
 export default async function LoginPage() {
-  const session = (await auth()) as Session
-
-  if (session && !session.user.isAnonymous) {
-    redirect('/')
+  const cookieStore = cookies()
+  const token = cookieStore.get('token')?.value
+  
+  if (token) {
+    try {
+      const userData = await verifyToken()
+      if (userData) {
+        redirect('/')
+      }
+    } catch (error) {
+      console.error('Error verifying token:', error)
+    }
   }
 
   return (
