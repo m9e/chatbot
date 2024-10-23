@@ -330,15 +330,22 @@ export const AI = createAI<AIState, UIState>({
         console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
         console.error('onSetAIState: Error verifying token:', error)
+        return null // Don't save if we can't verify the user
       }
+    }
+
+    // Only save if we have a valid user
+    if (!userData?.id) {
+      console.log('onSetAIState: No valid user, not saving chat')
+      return null
     }
 
     const { chatId, messages, selectedModel } = state
     const createdAt = new Date()
-    const userId = userData?.id || 'anonymous'
+    const userId = userData.id // Remove the anonymous fallback
     const path = `/chat/${chatId}`
 
-    const firstMessageContent = messages[0].content as string
+    const firstMessageContent = messages[0]?.content as string || 'New Chat'
     const title = firstMessageContent.substring(0, 100)
 
     const chat: Chat = {
@@ -351,11 +358,15 @@ export const AI = createAI<AIState, UIState>({
       selectedModel
     }
 
-    console.log('onSetAIState: About to save chat with ID:', chatId)
+    console.log('onSetAIState: Saving chat:', {
+      id: chat.id,
+      userId: chat.userId,
+      messageCount: chat.messages.length
+    })
+    
     const saved = await saveChat(chat)
     console.log('onSetAIState: Save result:', saved)
     
-    // Don't redirect, let the client handle navigation
     return chat
   }
 })

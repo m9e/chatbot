@@ -1,7 +1,14 @@
+
 const KAMIWAZA_API_URI = process.env.KAMIWAZA_API_URI || 'http://localhost:7777';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<any> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  let token: string | null = null;
+  
+  // Client-side only
+  if (typeof window !== 'undefined') {
+    token = localStorage.getItem('token')
+  }
+
   const headers = new Headers(options.headers);
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
@@ -43,7 +50,13 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error('Login failed');
   }
 
-  return response.json()
+  const data = await response.json();
+  
+  if (typeof window !== 'undefined') {
+    document.cookie = `token=${data.access_token}; path=/; max-age=${data.expires_in}`;
+  }
+
+  return data;
 }
 
 export async function getCurrentUser(): Promise<UserData | null> {
@@ -82,17 +95,24 @@ export interface UserData {
 }
 
 export async function verifyToken(): Promise<UserData | null> {
+  // Client-side only
   if (typeof window === 'undefined') {
-    // We're on the server side, so we can't access localStorage
-    console.log('verifyToken called on server-side, returning null');
+    return null;
+  }
+
+  const token = localStorage.getItem('token')
+  console.log('verifyToken [Client]: Token exists:', !!token)
+
+  if (!token) {
     return null;
   }
 
   try {
     const response = await fetchWithAuth('/api/auth/verify-token');
+    console.log('verifyToken: Successful response:', response);
     return response as UserData;
   } catch (error) {
-    console.error('Token verification error:', error);
+    console.error('verifyToken: Error:', error);
     return null;
   }
 }

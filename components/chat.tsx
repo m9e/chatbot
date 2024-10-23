@@ -13,6 +13,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
+import { AI } from '@/lib/chat/actions'
 
 
 
@@ -30,19 +31,31 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const [messages, setMessages] = useUIState<typeof AI>()
   const [aiState] = useAIState()
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const [newChatId, setNewChatId] = useLocalStorage('newChatId', null)
+  // Remove this line as we don't want to use anonymous
+  // const userId = user?.id || 'anonymous'
 
-  const [_, setNewChatId] = useLocalStorage('newChatId', id)
-  const userId = user?.id || 'anonymous'
-
+  // Add debug logging for auth state
   useEffect(() => {
-    const checkAnonymous = async () => {
+    console.log('Chat auth state:', { 
+      user: user?.id, 
+      loading, 
+      hasMessages: messages?.length > 0 
+    })
+  }, [user, loading, messages])
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
       const response = await fetch('/api/allow-anonymous')
       const { allowAnonymous } = await response.json()
       if (!allowAnonymous && !user && !loading) {
+        console.log('Not authenticated, redirecting to login')
         router.push('/login')
+        return
       }
     }
-    checkAnonymous()
+    checkAuth()
   }, [user, loading, router])
 
   useEffect(() => {

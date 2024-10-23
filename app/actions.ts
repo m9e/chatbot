@@ -11,6 +11,7 @@ import { redis } from '@/lib/redis'
 async function getUserData() {
   const cookieStore = cookies()
   const token = cookieStore.get('token')?.value
+  console.log('Token from cookies:', token?.substring(0, 10) + '...') // Add this debug line
   if (!token) return null
 
   try {
@@ -249,7 +250,8 @@ export async function saveChat(chat: Chat) {
   }
 
   const chatKey = `chat:${chat.id}`
-  console.log('saveChat: Using Redis key:', chatKey)
+  const userKey = `user:chat:${chat.userId}`  // Add this line for debugging
+  console.log('saveChat: Using Redis keys:', { chatKey, userKey })  // Debug keys
 
   try {
     const chatData = {
@@ -259,8 +261,17 @@ export async function saveChat(chat: Chat) {
       selectedModel: JSON.stringify(chat.selectedModel)
     }
 
+    // Save chat data
     await redis.hmset(chatKey, chatData)
-    console.log('saveChat: Successfully saved chat with ID:', chat.id)
+    
+    // Add to user's chat list with timestamp score
+    if (chat.userId !== 'anonymous') {
+      const score = new Date(chat.createdAt).getTime()
+      console.log('saveChat: Adding to user chat list:', { userId: chat.userId, chatId: chat.id, score })
+      await redis.zadd(userKey, score, chatKey)
+    }
+
+    console.log('saveChat: Successfully saved chat')
     return true
   } catch (error) {
     console.error('saveChat: Error saving chat:', error)
