@@ -6,6 +6,7 @@ import { getKamiwazaDeployments, selectKamiwazaModel } from '@/app/kamiwaza/acti
 import { ModelInfo } from '@/lib/types'
 import { updateChatWithSelectedModel } from '@/app/actions'
 import { useAIState } from 'ai/rsc'
+import { getDockerizedUrl } from '@/lib/utils'
 
 interface Deployment {
   m_name: string
@@ -58,11 +59,14 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
     let modelInfo: ModelInfo
 
     if (fixedModel && modelName === fixedModel.modelName) {
-      modelInfo = fixedModel
+      modelInfo = {
+        baseUrl: getDockerizedUrl(fixedModel.baseUrl),
+        modelName
+      }
     } else {
       const selectedDeployment = deployments.find(d => d.m_name === modelName)
       if (selectedDeployment) {
-        baseUrl = `http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`
+        baseUrl = getDockerizedUrl(`http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`)
         modelInfo = { baseUrl, modelName }
       } else {
         console.error('Selected deployment not found')

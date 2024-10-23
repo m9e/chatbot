@@ -36,6 +36,7 @@ import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
 import { Chat, Message, ModelInfo } from '@/lib/types'
 import { cookies } from 'next/headers'
 import { verifyToken } from '@/lib/kamiwazaApi'
+import { getDockerizedUrl } from '@/lib/utils'
 
 async function confirmPurchase(symbol: string, price: number, amount: number) {
   'use server'
@@ -155,11 +156,11 @@ async function submitUserMessage({
   let textNode: undefined | React.ReactNode
 
   const openai = createOpenAI({
-    baseURL: baseUrl,
+    baseURL: getDockerizedUrl(baseUrl),
     apiKey: 'kamiwaza_model'
   })
 
-  console.log(`Created OpenAI client with baseURL: ${baseUrl}`)
+  console.log(`Created OpenAI client with baseURL: ${getDockerizedUrl(baseUrl)}`)
 
   const result = await streamUI({
     model: openai(modelName),
@@ -272,16 +273,10 @@ export const AI = createAI<AIState, UIState>({
     selectModel
   },
   initialUIState: [],
-  initialAIState: ({ chatId }) => {
-    console.log('AI initialAIState with chatId:', chatId)
-    if (!chatId) {
-      throw new Error('chatId is required for AI initialization')
-    }
-    return {
-      chatId,
-      messages: [],
-      selectedModel: undefined
-    }
+  initialAIState: {
+    chatId: '', 
+    messages: [],
+    selectedModel: undefined
   },
   onGetUIState: async () => {
     'use server'
@@ -312,41 +307,38 @@ export const AI = createAI<AIState, UIState>({
     
     if (!state.chatId) {
       console.error('onSetAIState: No chatId in state')
-      return
+      return;  // Return without value
     }
 
     console.log('onSetAIState: Starting with chatId:', state.chatId)
     
-    if (!done) return
+    if (!done) return;
 
     const cookieStore = cookies()
     const token = cookieStore.get('token')?.value
     console.log('onSetAIState: Token:', token?.substring(0, 10) + '...')
     
-    // Add this debug line
     console.log('onSetAIState: Attempting to verify token with Kamiwaza API')
     
     let userData = null
     if (token) {
       try {
-        // Modify the verify token call to include the token
-        userData = await verifyToken(token) // Pass token explicitly
+        userData = await verifyToken(token)
         console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
         console.error('onSetAIState: Error verifying token:', error)
-        return null
+        return;  // Return without value
       }
     }
 
-    // Only save if we have a valid user
     if (!userData?.id) {
       console.log('onSetAIState: No valid user, not saving chat')
-      return null
+      return;  // Return without value
     }
 
     const { chatId, messages, selectedModel } = state
     const createdAt = new Date()
-    const userId = userData.id // Remove the anonymous fallback
+    const userId = userData.id
     const path = `/chat/${chatId}`
 
     const firstMessageContent = messages[0]?.content as string || 'New Chat'
@@ -368,9 +360,7 @@ export const AI = createAI<AIState, UIState>({
       messageCount: chat.messages.length
     })
     
-    const saved = await saveChat(chat)
-    console.log('onSetAIState: Save result:', saved)
-    
-    return chat
+    await saveChat(chat)  // Just await, don't store result
+    console.log('onSetAIState: Chat saved')
   }
 })
