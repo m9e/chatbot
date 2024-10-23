@@ -1,14 +1,11 @@
 import { type Metadata } from 'next'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 
 import { formatDate } from '@/lib/utils'
 import { getSharedChat } from '@/app/actions'
 import { ChatList } from '@/components/chat-list'
 import { FooterText } from '@/components/footer'
 import { AI, UIState, getUIStateFromAIState } from '@/lib/chat/actions'
-
-export const runtime = 'edge'
-export const preferredRegion = 'home'
 
 interface SharePageProps {
   params: {
@@ -17,12 +14,12 @@ interface SharePageProps {
 }
 
 export async function generateMetadata({
-  params
+  params,
 }: SharePageProps): Promise<Metadata> {
   const chat = await getSharedChat(params.id)
 
   return {
-    title: chat?.title.slice(0, 50) ?? 'Chat'
+    title: chat?.title.slice(0, 50) ?? 'Chat',
   }
 }
 
@@ -49,7 +46,12 @@ export default async function SharePage({ params }: SharePageProps) {
           </div>
         </div>
         <AI>
-          <ChatList messages={uiState} isShared={true} selectedModel={chat.selectedModel ?? null} />
+          <ChatList
+            messages={uiState}
+            user={null}
+            isShared={true}
+            selectedModel={chat.selectedModel ?? null}
+          />
         </AI>
       </div>
       <FooterText className="py-8" />

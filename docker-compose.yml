@@ -1,14 +1,53 @@
-version: '3'
+version: '3.8'
 
 services:
+  chat-app:
+    build: .
+    ports:
+      - "3003:3003"
+    environment:
+      - OPENAI_API_KEY=noop
+      - KAMIWAZA_API_URI=http://host.docker.internal:7777
+      - FIXED_MODEL_URI=http://localhost:8000/v1
+      - FIXED_MODEL_NAME=Dracarys2-72B-Instruct-4bit
+      - ALLOW_ANONYMOUS=true
+      - AUTH_SECRET=OlE2vKJ2SrIjoOH3r42hK9dkyeW2cPOI490GpX/jBpM=
+      - NEXTAUTH_SECRET=OlE2vKJ2SrIjoOH3r42hK9dkyeW2cPOI490GpX/jBpM=
+      - NEXTAUTH_URL=http://localhost:3003
+      - NEXT_PUBLIC_KAMIWAZA_API_URI=http://host.docker.internal:7777
+      - KV_URL=redis://redis:6379
+      - DOCKER_ENVIRONMENT=true
+
+      # - KV_REST_API_URL=http://redis:6379
+      # - KV_REST_API_TOKEN=dummy_token
+      # - KV_REST_API_READ_ONLY_TOKEN=dummy_readonly_token
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Add this for host.docker.internal to work
+
   redis:
-    image: redis:latest
-    container_name: redis-instance
+    image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
 
 volumes:
-  redis-data:
+  redis_data:
     driver: local
+
+networks:
+  app-network:
+    driver: bridge

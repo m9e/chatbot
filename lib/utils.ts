@@ -132,3 +132,11 @@ export function subMonths(date: Date, amount: number) {
   newDate.setMonth(newDate.getMonth() - amount)
   return newDate
 }
+
+export function getDockerizedUrl(url: string): string {
+  // Check if we're running in Docker
+  if (process.env.DOCKER_ENVIRONMENT === 'true') {
+    return url.replace(/localhost|127\.0\.0\.1/g, 'host.docker.internal')
+  }
+  return url
+}

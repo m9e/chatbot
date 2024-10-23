@@ -1,21 +1,23 @@
 import { Redis } from 'ioredis'
 
-let redisClient: Redis | null = null
-
-function createRedisClient() {
-  if (!redisClient) {
-    redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
-    
-    redisClient.on('error', (err) => {
-      console.error('Redis Client Error:', err)
-    })
-
-    redisClient.on('connect', () => {
-      console.log('Redis Client Connected')
-    })
+const getRedisUrl = () => {
+  if (process.env.KV_URL) {
+    return process.env.KV_URL
   }
-  return redisClient
+
+  throw new Error('REDIS_URL is not defined')
 }
 
-// Create and export the singleton instance
-export const redis = createRedisClient()
+export const redis = new Redis(getRedisUrl(), {
+  maxRetriesPerRequest: 1,
+  retryStrategy: (times) => {
+    if (times > 3) {
+      return null
+    }
+    return Math.min(times * 50, 2000)
+  }
+})
+
+redis.on('error', (error) => {
+  console.error('Redis Client Error:', error)
+})

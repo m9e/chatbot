@@ -19,7 +19,7 @@ export async function SidebarList({ userId }: SidebarListProps) {
             <p className="text-sm text-muted-foreground">No chat history</p>
           </div>
         </div>
-        <ClearHistory />
+        {/* <ClearHistory /> getting rid of this for now cuz its causing issues. */} 
       </div>
     )
   }
@@ -31,7 +31,7 @@ export async function SidebarList({ userId }: SidebarListProps) {
           <SidebarItems chats={chats} />
         </div>
       </div>
-      <ClearHistory />
+      {/* <ClearHistory /> */}
     </div>
   )
 }

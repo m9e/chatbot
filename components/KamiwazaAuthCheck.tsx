@@ -1,26 +1,28 @@
-'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { whoami } from '@/utils/kamiwazaApi'
+// pretty sure this is not needed anymore
+// 'use client'
 
-export default function KamiwazaAuthCheck() {
-  const router = useRouter()
+// import { useEffect } from 'react'
+// import { useRouter } from 'next/navigation'
+// import { whoami } from '@/utils/kamiwazaApi'
 
-  useEffect(() => {
-    const checkKamiwazaAuth = async () => {
-      try {
-        const userData = await whoami()
-        if (userData) {
-          router.push('/')
-        }
-      } catch (error) {
-        console.error('Error checking Kamiwaza authentication:', error)
-      }
-    }
+// export default function KamiwazaAuthCheck() {
+//   const router = useRouter()
 
-    checkKamiwazaAuth()
-  }, [router])
+//   useEffect(() => {
+//     const checkKamiwazaAuth = async () => {
+//       try {
+//         const userData = await whoami()
+//         if (userData) {
+//           router.push('/')
+//         }
+//       } catch (error) {
+//         console.error('Error checking Kamiwaza authentication:', error)
+//       }
+//     }
 
-  return null // This component doesn't render anything
-}
+//     checkKamiwazaAuth()
+//   }, [router])
+
+//   return null // This component doesn't render anything
+// }
