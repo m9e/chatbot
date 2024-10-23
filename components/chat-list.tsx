@@ -49,7 +49,7 @@ export function ChatList({ messages, user, isShared, selectedModel }: ChatList) 
               message.display
             )
           ) : (
-            <ChatMessage message={message as Message} selectedModel={selectedModel} />
+            <ChatMessage message={message as any} selectedModel={selectedModel} />
           )}
           {index < messages.length - 1 && <Separator className="my-4" />}
         </div>

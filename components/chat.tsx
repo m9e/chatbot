@@ -74,7 +74,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   }, [aiState.messages, router])
 
   useEffect(() => {
-    setNewChatId(id)
+    setNewChatId(id as any)
   }, [id, setNewChatId])
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
     if (aiState.messages?.length > 0) {
       console.log('Updating messages from aiState:', aiState.messages)
       // Update UI state with messages from aiState
-      setMessages(aiState.messages.map(msg => ({
+      setMessages(aiState.messages.map((msg: Message) => ({
         id: msg.id,
         content: msg.content,
         role: msg.role

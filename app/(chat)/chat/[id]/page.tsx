@@ -67,11 +67,10 @@ export default async function ChatPage({ params }: ChatPageProps) {
 
   return (
     <AI 
-      chatId={id} // Explicitly pass chatId here
       initialAIState={{
-        chatId: id, // And here
+        chatId: id,
         messages: chat?.messages || [],
-        selectedModel: chat?.selectedModel
+        selectedModel: chat?.selectedModel ?? undefined
       }}
     >
       <Chat

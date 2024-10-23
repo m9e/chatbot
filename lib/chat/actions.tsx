@@ -259,7 +259,7 @@ export const getUIStateFromAIState = (aiState: Chat) => {
           typeof message.content === 'string' ? (
           <BotMessage 
             content={message.content} 
-            selectedModel={aiState.selectedModel} 
+            selectedModel={aiState.selectedModel ?? null} 
           />
         ) : null
     }))

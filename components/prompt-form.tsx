@@ -24,13 +24,17 @@ interface PromptFormProps {
   setInput: (value: string) => void
   selectedModel: ModelInfo | null
   chatId?: string
+  onSubmit?: (value: string) => Promise<void>
+  isLoading?: boolean
 }
 
 export function PromptForm({
   input,
   setInput,
   selectedModel,
-  chatId
+  chatId,
+  onSubmit,
+  isLoading
 }: PromptFormProps) {
   const router = useRouter()
   const { formRef, onKeyDown } = useEnterSubmit()

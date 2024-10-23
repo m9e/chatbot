@@ -74,10 +74,10 @@ export async function getChats(userId?: string) {
         }
         try {
           return {
-            ...data,
-            messages: JSON.parse(data.messages || '[]'),
-            createdAt: new Date(data.createdAt),
-            selectedModel: data.selectedModel ? JSON.parse(data.selectedModel) : null
+            ...data as any,
+            messages: JSON.parse((data as any).messages || '[]'),
+            createdAt: new Date((data as any).createdAt),
+            selectedModel: (data as any).selectedModel ? JSON.parse((data as any).selectedModel) : null
           }
         } catch (e) {
           console.error('getChats: Error parsing chat data:', e)
@@ -118,7 +118,10 @@ export async function getChat(id: string, userId: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
@@ -195,7 +198,10 @@ export async function getSharedChat(id: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
@@ -227,7 +233,10 @@ export async function shareChat(id: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
