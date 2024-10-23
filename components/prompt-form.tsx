@@ -17,19 +17,24 @@ import { nanoid } from 'nanoid'
 import { useRouter } from 'next/navigation'
 import { ModelInfo } from '@/lib/types'
 import { toast } from 'sonner'
+import { verifyToken } from '@/lib/kamiwazaApi'
 
 interface PromptFormProps {
   input: string
   setInput: (value: string) => void
   selectedModel: ModelInfo | null
   chatId?: string
+  onSubmit?: (value: string) => Promise<void>
+  isLoading?: boolean
 }
 
 export function PromptForm({
   input,
   setInput,
   selectedModel,
-  chatId
+  chatId,
+  onSubmit,
+  isLoading
 }: PromptFormProps) {
   const router = useRouter()
   const { formRef, onKeyDown } = useEnterSubmit()
@@ -63,6 +68,10 @@ export function PromptForm({
     // Generate an ID if we don't have one
     const currentId = chatId || nanoid()
     
+    // Get current user data
+    const userData = await verifyToken()
+    console.log('handleSubmit: UserData:', userData)  // Debug user data
+
     // Update URL if needed
     if (!chatId) {
       await router.push(`/chat/${currentId}`)
@@ -85,7 +94,8 @@ export function PromptForm({
         message: value,
         chatId: currentId,
         baseUrl: selectedModel.baseUrl,
-        modelName: selectedModel.modelName
+        modelName: selectedModel.modelName,
+        userId: userData?.id || 'anonymous'  // Add userId here
       })
       setMessages(currentMessages => [...currentMessages, responseMessage])
     } catch (error) {

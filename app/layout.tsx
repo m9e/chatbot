@@ -7,7 +7,6 @@ import { TailwindIndicator } from '@/components/tailwind-indicator'
 import { Providers } from '@/components/providers'
 import { Header } from '@/components/header'
 import { Toaster } from '@/components/ui/sonner'
-import { ModelProvider } from '@/lib/ModelContext'
 import { AuthProvider } from '@/lib/auth-context'
 
 export const metadata = {

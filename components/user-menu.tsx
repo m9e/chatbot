@@ -31,6 +31,7 @@ export function UserMenu({ user }: UserMenuProps) {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('refreshToken')
+    document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
     router.push('/login')
   }
 

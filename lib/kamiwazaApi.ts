@@ -1,7 +1,13 @@
 const KAMIWAZA_API_URI = process.env.KAMIWAZA_API_URI || 'http://localhost:7777';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<any> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  let token: string | null = null;
+  
+  // Client-side only
+  if (typeof window !== 'undefined') {
+    token = localStorage.getItem('token')
+  }
+
   const headers = new Headers(options.headers);
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
@@ -43,7 +49,13 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error('Login failed');
   }
 
-  return response.json()
+  const data = await response.json();
+  
+  if (typeof window !== 'undefined') {
+    document.cookie = `token=${data.access_token}; path=/; max-age=${data.expires_in}`;
+  }
+
+  return data;
 }
 
 export async function getCurrentUser(): Promise<UserData | null> {
@@ -81,18 +93,52 @@ export interface UserData {
   last_login: string;
 }
 
-export async function verifyToken(): Promise<UserData | null> {
+export async function verifyToken(token?: string): Promise<UserData | null> {
+  // If token is provided, we're on server-side
+  if (token) {
+    try {
+      // Updated endpoint URL
+      const response = await fetch(`${KAMIWAZA_API_URI}/api/auth/verify-token`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Server verifyToken: Failed to verify token:', response.status);
+        return null;
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Server verifyToken: Error:', error);
+      return null;
+    }
+  }
+
+  // Client-side verification
   if (typeof window === 'undefined') {
-    // We're on the server side, so we can't access localStorage
-    console.log('verifyToken called on server-side, returning null');
+    return null;
+  }
+
+  const clientToken = localStorage.getItem('token')
+  console.log('verifyToken [Client]: Token exists:', !!clientToken)
+
+  if (!clientToken) {
     return null;
   }
 
   try {
-    const response = await fetchWithAuth('/api/auth/verify-token');
-    return response as UserData;
+    const response = await fetch('/api/auth/verify-token');
+    if (!response.ok) {
+      console.error('Client verifyToken: Failed with status:', response.status);
+      return null;
+    }
+    const userData = await response.json();
+    console.log('verifyToken: Successful response:', userData);
+    return userData;
   } catch (error) {
-    console.error('Token verification error:', error);
+    console.error('verifyToken: Error:', error);
     return null;
   }
 }

@@ -9,7 +9,7 @@ export default async function SignupPage() {
   
   if (token) {
     try {
-      const userData = await verifyToken()
+      const userData = await verifyToken(token)
       if (userData) {
         redirect('/')
       }

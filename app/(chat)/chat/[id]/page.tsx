@@ -21,7 +21,7 @@ export async function generateMetadata({
 
   if (token) {
     try {
-      userData = await verifyToken()
+      userData = await verifyToken(token)
     } catch (error) {
       console.error('Error verifying token:', error)
       return {}
@@ -55,7 +55,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
 
   if (token) {
     try {
-      userData = await verifyToken()
+      userData = await verifyToken(token)
       console.log('ChatPage: UserData after verify:', userData)
     } catch (error) {
       console.error('ChatPage: Error verifying token:', error)
@@ -67,11 +67,10 @@ export default async function ChatPage({ params }: ChatPageProps) {
 
   return (
     <AI 
-      chatId={id} // Explicitly pass chatId here
       initialAIState={{
-        chatId: id, // And here
+        chatId: id,
         messages: chat?.messages || [],
-        selectedModel: chat?.selectedModel
+        selectedModel: chat?.selectedModel ?? undefined
       }}
     >
       <Chat

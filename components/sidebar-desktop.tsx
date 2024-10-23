@@ -1,23 +1,33 @@
 import { Sidebar } from '@/components/sidebar'
 import { ChatHistory } from '@/components/chat-history'
-import { cookies } from 'next/headers'
-import { verifyToken } from '@/lib/kamiwazaApi'
+import { getServerSideToken } from '@/lib/server-utils'
 
 export async function SidebarDesktop() {
-  const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
   let userId = null
+  
+  try {
+    const token = await getServerSideToken()
+    console.log('SidebarDesktop: Token exists:', !!token)
 
-  if (token) {
-    try {
-      const userData = await verifyToken()
-      userId = userData?.id
-    } catch (error) {
-      console.error('Error verifying token:', error)
+    if (token) {
+      const response = await fetch(`${process.env.KAMIWAZA_API_URI}/api/auth/verify-token`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (response.ok) {
+        const userData = await response.json()
+        console.log('SidebarDesktop: UserData:', userData)
+        userId = userData?.id
+      }
     }
+  } catch (error) {
+    console.error('SidebarDesktop: Error:', error)
   }
 
   if (!userId) {
+    console.log('SidebarDesktop: No userId, not rendering sidebar')
     return null
   }
 

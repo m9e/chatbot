@@ -11,6 +11,7 @@ import { redis } from '@/lib/redis'
 async function getUserData() {
   const cookieStore = cookies()
   const token = cookieStore.get('token')?.value
+  console.log('Token from cookies:', token?.substring(0, 10) + '...') // Add this debug line
   if (!token) return null
 
   try {
@@ -36,44 +37,59 @@ export async function updateChatWithSelectedModel(chatId: string, selectedModel:
   }
 }
 
-export async function getChats(userId?: string | null) {
+export async function getChats(userId?: string) {
   console.log('getChats: Starting for userId:', userId)
-  const userData = await getUserData()
-
-  if (!userId || !userData) {
+  
+  if (!userId) {
+    console.log('getChats: No userId provided')
     return []
-  }
-
-  if (userId !== userData.id) {
-    return { error: 'Unauthorized' }
   }
 
   try {
     // Get chat IDs from sorted set
-    const chatIds = await redis.zrange(`user:chat:${userId}`, 0, -1, 'REV')
-    console.log('getChats: Found chat IDs:', chatIds)
+    const userKey = `user:chat:${userId}`
+    const chatKeys = await redis.zrange(userKey, 0, -1)
+    console.log('getChats: Found chat keys:', chatKeys)
 
-    if (!chatIds.length) return []
+    if (!chatKeys.length) {
+      console.log('getChats: No chats found')
+      return []
+    }
 
-    // Get all chats data
+    // Get all chats data using pipeline
     const pipeline = redis.pipeline()
-    for (const chatId of chatIds) {
-      pipeline.hgetall(chatId)
+    for (const key of chatKeys) {
+      pipeline.hgetall(key)
     }
 
     const results = await pipeline.exec()
+    console.log('getChats: Raw results:', results?.length)
+
+    // Process results
     const chats = results
       ?.map(([err, data]) => {
-        if (err || !data) return null
-        return {
-          ...data,
-          messages: JSON.parse(data.messages || '[]'),
-          createdAt: new Date(data.createdAt),
-          selectedModel: data.selectedModel ? JSON.parse(data.selectedModel) : null
+        if (err || !data) {
+          console.log('getChats: Error or no data for chat')
+          return null
+        }
+        try {
+          return {
+            ...data as any,
+            messages: JSON.parse((data as any).messages || '[]'),
+            createdAt: new Date((data as any).createdAt),
+            selectedModel: (data as any).selectedModel ? JSON.parse((data as any).selectedModel) : null
+          }
+        } catch (e) {
+          console.error('getChats: Error parsing chat data:', e)
+          return null
         }
       })
-      .filter(Boolean) as Chat[]
+      .filter(Boolean)
+      .sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      })
 
+    console.log('getChats: Returning chats:', chats?.length)
     return chats
   } catch (error) {
     console.error('getChats: Error:', error)
@@ -102,7 +118,10 @@ export async function getChat(id: string, userId: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
@@ -179,7 +198,10 @@ export async function getSharedChat(id: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
@@ -211,7 +233,10 @@ export async function shareChat(id: string) {
 
     // Parse stored JSON fields
     const chat: Chat = {
-      ...chatData,
+      id: chatData.id,
+      title: chatData.title,
+      userId: chatData.userId,
+      path: chatData.path,
       messages: JSON.parse(chatData.messages || '[]'),
       createdAt: new Date(chatData.createdAt),
       selectedModel: chatData.selectedModel ? JSON.parse(chatData.selectedModel) : null
@@ -249,18 +274,36 @@ export async function saveChat(chat: Chat) {
   }
 
   const chatKey = `chat:${chat.id}`
-  console.log('saveChat: Using Redis key:', chatKey)
+  const userKey = `user:chat:${chat.userId}`
+  console.log('saveChat: Using Redis keys:', { chatKey, userKey })
 
   try {
+    // Prepare chat data for hash storage
     const chatData = {
-      ...chat,
+      id: chat.id,
+      userId: chat.userId,
+      title: chat.title,
+      path: chat.path,
       messages: JSON.stringify(chat.messages),
       createdAt: chat.createdAt.toISOString(),
       selectedModel: JSON.stringify(chat.selectedModel)
     }
 
+    // Save chat data as hash
     await redis.hmset(chatKey, chatData)
-    console.log('saveChat: Successfully saved chat with ID:', chat.id)
+    
+    // Add to user's sorted set (without chat: prefix in the member)
+    if (chat.userId !== 'anonymous') {
+      const score = new Date(chat.createdAt).getTime()
+      console.log('saveChat: Adding to user chat list:', {
+        userId: chat.userId,
+        chatId: chat.id,
+        score
+      })
+      await redis.zadd(userKey, score, chatKey)
+    }
+
+    console.log('saveChat: Successfully saved chat')
     return true
   } catch (error) {
     console.error('saveChat: Error saving chat:', error)

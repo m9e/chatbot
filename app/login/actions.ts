@@ -25,7 +25,7 @@ export async function authenticate(
       }
       return {
         type: 'success',
-        resultCode: ResultCode.Success
+        resultCode: ResultCode.UserLoggedIn
       }
     } else {
       return {

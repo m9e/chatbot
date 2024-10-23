@@ -259,7 +259,7 @@ export const getUIStateFromAIState = (aiState: Chat) => {
           typeof message.content === 'string' ? (
           <BotMessage 
             content={message.content} 
-            selectedModel={aiState.selectedModel} 
+            selectedModel={aiState.selectedModel ?? null} 
           />
         ) : null
     }))
@@ -322,23 +322,34 @@ export const AI = createAI<AIState, UIState>({
     const cookieStore = cookies()
     const token = cookieStore.get('token')?.value
     console.log('onSetAIState: Token:', token?.substring(0, 10) + '...')
+    
+    // Add this debug line
+    console.log('onSetAIState: Attempting to verify token with Kamiwaza API')
+    
     let userData = null
-
     if (token) {
       try {
-        userData = await verifyToken()
+        // Modify the verify token call to include the token
+        userData = await verifyToken(token) // Pass token explicitly
         console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
         console.error('onSetAIState: Error verifying token:', error)
+        return null
       }
+    }
+
+    // Only save if we have a valid user
+    if (!userData?.id) {
+      console.log('onSetAIState: No valid user, not saving chat')
+      return null
     }
 
     const { chatId, messages, selectedModel } = state
     const createdAt = new Date()
-    const userId = userData?.id || 'anonymous'
+    const userId = userData.id // Remove the anonymous fallback
     const path = `/chat/${chatId}`
 
-    const firstMessageContent = messages[0].content as string
+    const firstMessageContent = messages[0]?.content as string || 'New Chat'
     const title = firstMessageContent.substring(0, 100)
 
     const chat: Chat = {
@@ -351,11 +362,15 @@ export const AI = createAI<AIState, UIState>({
       selectedModel
     }
 
-    console.log('onSetAIState: About to save chat with ID:', chatId)
+    console.log('onSetAIState: Saving chat:', {
+      id: chat.id,
+      userId: chat.userId,
+      messageCount: chat.messages.length
+    })
+    
     const saved = await saveChat(chat)
     console.log('onSetAIState: Save result:', saved)
     
-    // Don't redirect, let the client handle navigation
     return chat
   }
 })

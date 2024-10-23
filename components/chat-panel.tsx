@@ -160,12 +160,12 @@ export function ChatPanel({
           </div>
         )}
         <PromptForm
-          onSubmit={handleSubmit}
           input={input}
           setInput={setInput}
-          isLoading={false}
-          selectedModel={selectedModel}  // Make sure this line exists
+          selectedModel={selectedModel}
           chatId={id}
+          onSubmit={handleSubmit}
+          isLoading={false}
         />
         <FooterText className="hidden sm:block" />
       </div>
