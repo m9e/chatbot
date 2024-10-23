@@ -322,15 +322,19 @@ export const AI = createAI<AIState, UIState>({
     const cookieStore = cookies()
     const token = cookieStore.get('token')?.value
     console.log('onSetAIState: Token:', token?.substring(0, 10) + '...')
+    
+    // Add this debug line
+    console.log('onSetAIState: Attempting to verify token with Kamiwaza API')
+    
     let userData = null
-
     if (token) {
       try {
-        userData = await verifyToken()
+        // Modify the verify token call to include the token
+        userData = await verifyToken(token) // Pass token explicitly
         console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
         console.error('onSetAIState: Error verifying token:', error)
-        return null // Don't save if we can't verify the user
+        return null
       }
     }
 
