@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   try {
-    const userData = await verifyToken()
+    const userData = await verifyToken(token)
     if (!userData?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
