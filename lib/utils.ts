@@ -89,6 +89,9 @@ export const getMessageFromCode = (resultCode: string) => {
 }
 
 export function format(date: Date, formatString: string) {
+  if (!formatString) {
+    throw new Error('formatString is undefined');
+  }
   const year = date.getFullYear()
   const month = date.getMonth()
   const day = date.getDate()
@@ -134,6 +137,9 @@ export function subMonths(date: Date, amount: number) {
 }
 
 export function getDockerizedUrl(url: string): string {
+  if (!url) {
+    throw new Error('URL is undefined');
+  }
   // Check if we're running in Docker
   if (process.env.DOCKER_ENVIRONMENT === 'true') {
     return url.replace(/localhost|127\.0\.0\.1/g, 'host.docker.internal')

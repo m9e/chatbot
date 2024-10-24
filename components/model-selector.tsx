@@ -25,25 +25,34 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   const [fixedModel, setFixedModel] = useState<ModelInfo | null>(null)
 
   useEffect(() => {
-    const fetchData = async () => {
-      const deployments = await getKamiwazaDeployments()
-      setDeployments(deployments)
+    const fetchDeployments = async () => {
+      try {
+        const fetchedDeployments = await getKamiwazaDeployments()
+        setDeployments(fetchedDeployments)
 
-      const response = await fetch('/api/fixed-model')
-      const fixedModel = await response.json()
-      setFixedModel(fixedModel)
+        // Fetch fixed model information
+        const response = await fetch('/api/fixed-model')
+        const fixedModelData = await response.json()
+        if (fixedModelData.uri && fixedModelData.name) {
+          setFixedModel({
+            baseUrl: fixedModelData.uri,
+            modelName: fixedModelData.name
+          })
+        }
 
-      // Set default model to the first deployment if available
-      if (deployments.length > 0) {
-        setSelectedModel(deployments[0].m_name)
-        onModelSelect(deployments[0].m_name) // Ensure the default model is set in the parent component
-      } else if (fixedModel) {
-        setSelectedModel(fixedModel.modelName)
-        onModelSelect(fixedModel.modelName) // Ensure the default model is set in the parent component
+        // Select fixed model by default if available, otherwise select first deployment
+        if (fixedModelData.uri && fixedModelData.name) {
+          handleModelChange(fixedModelData.name)
+        } else if (fetchedDeployments.length > 0) {
+          handleModelChange(fetchedDeployments[0].m_name)
+        }
+      } catch (error) {
+        console.error('Failed to fetch deployments:', error)
       }
     }
-    fetchData()
-  }, []) 
+
+    fetchDeployments()
+  }, [])
 
   const handleModelChange = async (modelName: string) => {
     let baseUrl: string
