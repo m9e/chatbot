@@ -119,7 +119,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   return (
     <div
       className={cn(
-        'group w-full overflow-auto pl-0 peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px]',
+        'group w-full overflow-auto pl-0 bg-black peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px]',
         className
       )}
       ref={scrollRef}
@@ -132,7 +132,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
           </span>
         )}
       </div>
-      <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
+      <div className={cn('pb-[200px] pt-4 md:pt-10 bg-black')} ref={messagesRef}>
         {messages?.length > 0 ? ( // Add null check and ensure length check
           <ChatList 
             messages={messages} 
