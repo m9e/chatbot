@@ -72,8 +72,11 @@ export default function LoginForm() {
       onSubmit={handleSubmit}
       className="flex flex-col items-center gap-4 space-y-3"
     >
-      <div className="w-full flex-1 rounded-lg border bg-white px-6 pb-4 pt-8 shadow-md  md:w-96 dark:bg-zinc-950">
-        <h1 className="mb-3 text-2xl font-bold">Please log in to continue.</h1>
+      <div className="w-full flex-1 rounded-lg bg-white px-6 pb-4 pt-8 shadow-md  md:w-96 dark:bg-zinc-950">
+        <h1 className="mb-3 text-2xl font-bold">Log in</h1>
+        
+        <h2 className="mb-3 text-md font-medium text-zinc-600">Use your Kamiwaza credentials to log in</h2>
+        
         <div className="w-full">
           <div>
             <label
@@ -84,7 +87,7 @@ export default function LoginForm() {
             </label>
             <div className="relative">
               <input
-                className="peer block w-full rounded-md border bg-zinc-50 px-2 py-[9px] text-sm outline-none placeholder:text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950"
+                className="peer block w-full rounded-md border bg-muted px-2 py-[9px] text-sm outline-none placeholder:text-zinc-500 dark:border-zinc-800 dark:bg-muted"
                 id="username"
                 type="text"
                 name="username"
@@ -102,7 +105,7 @@ export default function LoginForm() {
             </label>
             <div className="relative">
               <input
-                className="peer block w-full rounded-md border bg-zinc-50 px-2 py-[9px] text-sm outline-none placeholder:text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950"
+                className="peer block w-full rounded-md border bg-muted px-2 py-[9px] text-sm outline-none placeholder:text-zinc-500 dark:border-zinc-800 dark:bg-muted"
                 id="password"
                 type="password"
                 name="password"
@@ -115,7 +118,6 @@ export default function LoginForm() {
         </div>
         <LoginButton />
       </div>
-
     </form>
   )
 }

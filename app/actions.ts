@@ -11,11 +11,17 @@ import { redis } from '@/lib/redis'
 async function getUserData() {
   const cookieStore = cookies()
   const token = cookieStore.get('token')?.value
-  console.log('Token from cookies:', token?.substring(0, 10) + '...') // Add this debug line
-  if (!token) return null
+  console.log('Token from cookies:', token ? token.substring(0, 10) + '...' : 'No token found') // Updated debug line
+
+  if (!token) {
+    console.log('getUserData: No token present in cookies')
+    return null
+  }
 
   try {
-    return await verifyToken()
+    const userData = await verifyToken(token)
+    console.log('getUserData: UserData after verify:', userData)
+    return userData
   } catch (error) {
     console.error('Error verifying token:', error)
     return null
@@ -138,6 +144,8 @@ export async function getChat(id: string, userId: string) {
 export async function removeChat({ id, path }: { id: string; path: string }) {
   const userData = await getUserData()
 
+  console.log('removeChat: UserData:', userData)
+
   if (!userData) {
     return {
       error: 'Unauthorized'
@@ -146,6 +154,8 @@ export async function removeChat({ id, path }: { id: string; path: string }) {
 
   // Get userId from Redis hash
   const uid = await redis.hget(`chat:${id}`, 'userId')
+
+  console.log('removeChat: uid:', uid)
 
   if (uid !== userData.id) {
     return {

@@ -95,7 +95,9 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   return (
     <Select onValueChange={handleModelChange} value={selectedModel || undefined}>
       <SelectTrigger className="w-[200px]">
-        <SelectValue placeholder="Select a model" />
+        <SelectValue placeholder="Select a model">
+          {selectedModel}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {fixedModel && (
@@ -105,7 +107,7 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
         )}
         {deployments.map(deployment => (
           <SelectItem key={deployment.m_name} value={deployment.m_name}>
-            {deployment.m_name}
+            {deployment.m_name} (Port: {deployment.lb_port})
           </SelectItem>
         ))}
       </SelectContent>

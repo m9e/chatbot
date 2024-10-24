@@ -119,20 +119,15 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   return (
     <div
       className={cn(
-        'group w-full overflow-auto pl-0 peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px]',
+        'group w-full overflow-auto pl-0 peer-[[data-state=open]]:lg:pl-[250px] peer-[[data-state=open]]:xl:pl-[300px] bg-background',
         className
       )}
       ref={scrollRef}
     >
       <div className="fixed top-16 right-4 z-50 flex items-center">
         <ModelSelector onModelSelect={handleModelSelect} />
-        {selectedModel && (
-          <span className="ml-2 text-sm text-gray-500">
-            Model: {selectedModel.modelName}
-          </span>
-        )}
       </div>
-      <div className={cn('pb-[200px] pt-4 md:pt-10')} ref={messagesRef}>
+      <div className={cn('pb-[200px] pt-4 md:pt-10 bg-background')} ref={messagesRef}>
         {messages?.length > 0 ? ( // Add null check and ensure length check
           <ChatList 
             messages={messages} 

@@ -47,14 +47,14 @@ export function ChatMessage({ message, selectedModel, ...props }: ChatMessagePro
               return <p className="mb-2 last:mb-0">{children}</p>
             },
             code({ node, inline, className, children, ...props }) {
-              if (children.length) {
-                if (children[0] == '▍') {
+              if (children.length && typeof children[0] === 'string') {
+                if (children[0] === '▍') {
                   return (
                     <span className="mt-1 cursor-default animate-pulse">▍</span>
                   )
                 }
 
-                children[0] = (children[0] as string).replace('`▍`', '▍')
+                children[0] = children[0].replace('`▍`', '▍')
               }
 
               const match = /language-(\w+)/.exec(className || '')
