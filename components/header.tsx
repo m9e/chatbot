@@ -46,7 +46,6 @@ function UserOrLogin() {
           <div className="flex items-center">
             <IconSeparator className="size-6 text-muted-foreground/50" />
             <UserMenu user={user} />
-            <span className="ml-2">Welcome, {user.full_name}</span>
           </div>
         </>
       ) : (
@@ -71,18 +70,18 @@ function UserOrLogin() {
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between w-full h-16 px-4 border-b shrink-0 bg-gradient-to-b from-background/10 via-background/50 to-background/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 flex items-center justify-between w-full h-16 px-4 bg-background">
       <div className="flex items-center">
         <React.Suspense fallback={<div className="flex-1 overflow-auto" />}>
           <UserOrLogin />
         </React.Suspense>
       </div>
       <div className="flex items-center justify-end space-x-2">
-          {process.env.NEXT_PUBLIC_KAMIWAZA_URI ? (
-            <a href={process.env.NEXT_PUBLIC_KAMIWAZA_URI} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center">
-              <span className="mr-1">→</span> {/* Little arrow added */}
-              Kamiwaza Dashboard
-            </a>
+        {process.env.NEXT_PUBLIC_KAMIWAZA_URI ? (
+          <a href={process.env.NEXT_PUBLIC_KAMIWAZA_URI} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center">
+            <span className="mr-1">→</span> {/* Little arrow added */}
+            Kamiwaza Dashboard
+          </a>
         ) : null}
       </div>
     </header>

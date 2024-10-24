@@ -7,7 +7,8 @@ import { IconArrowRight } from '@/components/ui/icons'
 export function EmptyScreen() {
   return (
     <div className="mx-auto max-w-2xl px-4">
-      <div className="flex flex-col gap-2 rounded-lg bg-zinc-900 p-8">
+      {/* add a thin border */}
+      <div className="flex flex-col gap-2 rounded-lg bg-background p-8 border border-gray-300">
         <h1 className="text-lg font-semibold">
           Welcome to Kamiwaza PrivateGPT Chat!
         <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400 mt-2 mb-4">

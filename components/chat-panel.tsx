@@ -98,14 +98,14 @@ export function ChatPanel({
   console.log('ChatPanel selectedModel:', selectedModel); 
 
   return (
-    <div className="fixed inset-x-0 bottom-0 w-full bg-black p-4">
+    <div className="fixed inset-x-0 bottom-0 w-full bg-background p-4">
       <ButtonScrollToBottom
         isAtBottom={isAtBottom}
         scrollToBottom={scrollToBottom}
       />
 
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-center rounded-md bg-[#2C2C2E] p-2">
+        <div className="flex items-center rounded-md bg-muted p-2">
           <PromptForm
             input={input}
             setInput={setInput}

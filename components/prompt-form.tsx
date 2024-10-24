@@ -108,7 +108,7 @@ export function PromptForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="w-full">
-      <div className="relative flex w-full items-center bg-[#2C2C2E] rounded-md">
+      <div className="relative flex w-full items-center rounded-md">
         <button
           type="button"
           className="p-2 text-muted-foreground hover:text-foreground"
