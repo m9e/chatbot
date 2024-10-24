@@ -126,11 +126,6 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
     >
       <div className="fixed top-16 right-4 z-50 flex items-center">
         <ModelSelector onModelSelect={handleModelSelect} />
-        {selectedModel && (
-          <span className="ml-2 text-sm text-gray-500">
-            Model: {selectedModel.modelName}
-          </span>
-        )}
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10 bg-black')} ref={messagesRef}>
         {messages?.length > 0 ? ( // Add null check and ensure length check
