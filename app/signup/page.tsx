@@ -5,7 +5,7 @@ import { verifyToken } from '@/lib/kamiwazaApi'
 
 export default async function SignupPage() {
   const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
+  const token = cookieStore.get('access_token')?.value
   
   if (token) {
     try {

@@ -4,18 +4,17 @@ const KAMIWAZA_API_URI = process.env.KAMIWAZA_API_URI || 'http://localhost:7777'
 
 export async function GET() {
   const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
+  const token = cookieStore.get('access_token')?.value  // Changed from 'token'
 
   if (!token) {
-    console.log('verify-token: No token found in cookies')
+    console.log('verify-token: No access_token found in cookies')
     return NextResponse.json({ error: 'No token found' }, { status: 401 })
   }
 
   try {
-    // Changed from /verify to /verify-token to match Kamiwaza API
     const response = await fetch(`${KAMIWAZA_API_URI}/api/auth/verify-token`, {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Cookie': `access_token=${token}`
       }
     })
 
@@ -28,7 +27,6 @@ export async function GET() {
     }
 
     const userData = await response.json()
-    console.log('verify-token: Successful verification for user:', userData.username)
     return NextResponse.json(userData)
   } catch (error) {
     console.error('Error verifying token:', error)

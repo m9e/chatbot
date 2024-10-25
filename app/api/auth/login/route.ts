@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
     // Set the cookie server-side
     cookies().set({
-      name: 'token',
+      name: 'access_token',
       value: loginResult.access_token,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

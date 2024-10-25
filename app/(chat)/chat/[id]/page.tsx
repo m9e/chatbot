@@ -16,7 +16,7 @@ export async function generateMetadata({
   params
 }: ChatPageProps): Promise<Metadata> {
   const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
+  const token = cookieStore.get('access_token')?.value
   let userData = null
 
   if (token) {
@@ -48,7 +48,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
   console.log('ChatPage: Starting with params:', params)
 
   const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
+  const token = cookieStore.get('access_token')?.value
   console.log('ChatPage: Token:', token?.substring(0, 10) + '...')
   let userData = null
   const missingKeys = await getMissingKeys()

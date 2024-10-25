@@ -10,8 +10,8 @@ import { redis } from '@/lib/redis'
 
 async function getUserData() {
   const cookieStore = cookies()
-  const token = cookieStore.get('token')?.value
-  console.log('Token from cookies:', token ? token.substring(0, 10) + '...' : 'No token found') // Updated debug line
+  const token = cookieStore.get('access_token')?.value
+  console.log('Token from cookies:', token ? token.substring(0, 10) + '...' : 'No token found')
 
   if (!token) {
     console.log('getUserData: No token present in cookies')
