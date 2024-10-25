@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const allowAnonymous = process.env.ALLOW_ANONYMOUS === 'true'
-  const token = request.cookies.get('token')?.value
+  const token = request.cookies.get('access_token')?.value
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
 
   // Allow public paths

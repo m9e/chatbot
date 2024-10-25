@@ -282,12 +282,12 @@ export const AI = createAI<AIState, UIState>({
     'use server'
 
     const cookieStore = cookies()
-    const token = cookieStore.get('token')?.value
+    const token = cookieStore.get('access_token')?.value
     let userData = null
 
     if (token) {
       try {
-        userData = await verifyToken()
+        userData = await verifyToken(token)
       } catch (error) {
         console.error('Error verifying token:', error)
       }
@@ -315,7 +315,7 @@ export const AI = createAI<AIState, UIState>({
     if (!done) return;
 
     const cookieStore = cookies()
-    const token = cookieStore.get('token')?.value
+    const token = cookieStore.get('access_token')?.value
     console.log('onSetAIState: Token:', token?.substring(0, 10) + '...')
     
     console.log('onSetAIState: Attempting to verify token with Kamiwaza API')

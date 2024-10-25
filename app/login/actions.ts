@@ -19,10 +19,16 @@ export async function authenticate(
   try {
     const loginResult = await login(username, password)
     if (loginResult.access_token) {
-      cookies().set('token', loginResult.access_token)
-      if (loginResult.refresh_token) {
-        cookies().set('refreshToken', loginResult.refresh_token)
-      }
+      // Set the cookie with the correct name that Kamiwaza expects
+      cookies().set({
+        name: 'access_token',
+        value: loginResult.access_token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: loginResult.expires_in
+      })
       return {
         type: 'success',
         resultCode: ResultCode.UserLoggedIn

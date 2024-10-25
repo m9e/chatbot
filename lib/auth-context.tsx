@@ -23,9 +23,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkAuth = async () => {
       try {
         const userData = await verifyToken()
-        setUser(userData)
+        if (userData) {
+          setUser(userData)
+        }
       } catch (error) {
         console.error('Error verifying token:', error)
+        setUser(null)
       } finally {
         setLoading(false)
       }
@@ -34,8 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refreshToken')
+    // Clear the access_token cookie
+    document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
     setUser(null)
   }
 

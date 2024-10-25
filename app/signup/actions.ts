@@ -24,7 +24,7 @@ export async function signup(
     // After successful signup, login the user
     const loginResult = await login(email, password)
     if (loginResult.access_token) {
-      cookies().set('token', loginResult.access_token)
+      cookies().set('access_token', loginResult.access_token)
       if (loginResult.refresh_token) {
         cookies().set('refreshToken', loginResult.refresh_token)
       }

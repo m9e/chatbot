@@ -47,13 +47,13 @@ export default function LoginForm() {
       const loginResult = await login(username, password)
       if (loginResult.access_token) {
         // Store in both localStorage and cookies
-        localStorage.setItem('token', loginResult.access_token)
+        localStorage.setItem('access_token', loginResult.access_token)
         if (loginResult.refresh_token) {
           localStorage.setItem('refreshToken', loginResult.refresh_token)
         }
         
         // Add this line to set the cookie
-        document.cookie = `token=${loginResult.access_token}; path=/; max-age=${loginResult.expires_in}`
+        document.cookie = `access_token=${loginResult.access_token}; path=/; max-age=${loginResult.expires_in}`
         
         toast.success('Logged in successfully')
         router.refresh() // Add this to trigger a server-side rerender

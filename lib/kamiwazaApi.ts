@@ -1,11 +1,12 @@
 const KAMIWAZA_API_URI = process.env.KAMIWAZA_API_URI || 'http://localhost:7777';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3003';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<any> {
   let token: string | null = null;
   
   // Client-side only
   if (typeof window !== 'undefined') {
-    token = localStorage.getItem('token')
+    token = localStorage.getItem('access_token')
   }
 
   const headers = new Headers(options.headers);
@@ -49,20 +50,14 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error('Login failed');
   }
 
-  const data = await response.json();
-  
-  if (typeof window !== 'undefined') {
-    document.cookie = `token=${data.access_token}; path=/; max-age=${data.expires_in}`;
-  }
-
-  return data;
+  return response.json();
 }
 
 export async function getCurrentUser(): Promise<UserData | null> {
   try {
     // Check if we're on the client-side
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       if (!token) {
         return null;
       }
@@ -94,51 +89,48 @@ export interface UserData {
 }
 
 export async function verifyToken(token?: string): Promise<UserData | null> {
-  // If token is provided, we're on server-side
-  if (token) {
-    try {
-      // Updated endpoint URL
+  try {
+    // Server-side verification (when token is provided)
+    if (token) {
       const response = await fetch(`${KAMIWAZA_API_URI}/api/auth/verify-token`, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Cookie': `access_token=${token}`
         }
-      });
-      
+      })
+
       if (!response.ok) {
-        console.error('Server verifyToken: Failed to verify token:', response.status);
-        return null;
+        console.error('Server verifyToken: Failed with status:', response.status)
+        return null
       }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Server verifyToken: Error:', error);
-      return null;
+
+      return await response.json()
     }
-  }
 
-  // Client-side verification
-  if (typeof window === 'undefined') {
-    return null;
-  }
+    // Client-side verification
+    if (typeof window !== 'undefined') {
+      const response = await fetch('/api/auth/verify-token', {
+        credentials: 'include'
+      })
 
-  const clientToken = localStorage.getItem('token')
-  console.log('verifyToken [Client]: Token exists:', !!clientToken)
+      if (!response.ok) {
+        console.error('Client verifyToken: Failed with status:', response.status)
+        return null
+      }
 
-  if (!clientToken) {
-    return null;
-  }
+      return await response.json()
+    }
 
-  try {
-    const response = await fetch('/api/auth/verify-token');
+    // Server-side verification without token
+    const response = await fetch(`${APP_URL}/api/auth/verify-token`)
+
     if (!response.ok) {
-      console.error('Client verifyToken: Failed with status:', response.status);
-      return null;
+      console.error('Server verifyToken: Failed with status:', response.status)
+      return null
     }
-    const userData = await response.json();
-    console.log('verifyToken: Successful response:', userData);
-    return userData;
+
+    return await response.json()
   } catch (error) {
-    console.error('verifyToken: Error:', error);
-    return null;
+    console.error('verifyToken: Error:', error)
+    return null
   }
 }
