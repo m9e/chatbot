@@ -163,7 +163,7 @@ async function submitUserMessage({
   console.log(`Created OpenAI client with baseURL: ${getDockerizedUrl(baseUrl)}`)
 
   const result = await streamUI({
-    model: openai(modelName),
+    model: openai(baseUrl.includes('localhost') ? modelName : 'model'),
     initial: <SpinnerMessage />,
     system: `You are a helpful AI assistant.`,
     messages: [

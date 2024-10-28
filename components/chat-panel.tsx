@@ -90,7 +90,7 @@ export function ChatPanel({
       
       setMessages(currentMessages => [...currentMessages, responseMessage])
     } catch (error) {
-      console.error('Error submitting message:', error)
+      console.error('Error submitting message (chat-panel):', error)
       toast.error('Failed to send message. Please try again.')
     }
   }

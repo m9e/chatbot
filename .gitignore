@@ -42,3 +42,7 @@ package-lock.json
 code.txt
 code.txt
 code.txt
+x.sh
+
+certificates
+mkcert-v1.4.4-linux-amd64

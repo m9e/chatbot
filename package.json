@@ -1,7 +1,8 @@
 {
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo -p 3003",
+    "dev": "next dev --turbo -H 0.0.0.0 -p 3003",
+    "dev:https": "next dev --turbo -H 0.0.0.0 -p 3003 --experimental-https",
     "build": "next build",
     "start": "next start -p 3003",
     "type-check": "tsc --noEmit",
