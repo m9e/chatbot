@@ -2,7 +2,7 @@
 
 // components/user-menu.tsx
 
-import { type UserData } from '@/lib/kamiwazaApi'
+import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,9 +12,9 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useRouter } from 'next/navigation'
-
-export interface UserMenuProps {
-  user: UserData
+import { UserData } from '@/lib/kamiwazaApi'
+interface UserMenuProps {
+  user: UserData;
 }
 
 function getUserInitials(name: string) {
@@ -26,14 +26,8 @@ function getUserInitials(name: string) {
 }
 
 export function UserMenu({ user }: UserMenuProps) {
+  const { logout } = useAuth()
   const router = useRouter()
-
-  const handleLogout = () => {
-    document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-    document.cookie = 'refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-    document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-    router.push('/login')
-  }
 
   if (!user || user.username === 'Anonymous User') {
     return (
@@ -43,7 +37,7 @@ export function UserMenu({ user }: UserMenuProps) {
         </div>
         <span className="ml-2 hidden md:block">Log In</span>
       </Button>
-    );
+    )
   }
 
   return (
@@ -62,7 +56,7 @@ export function UserMenu({ user }: UserMenuProps) {
             <div className="text-xs text-zinc-500">{user.email}</div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout}>
+          <DropdownMenuItem onClick={logout}>
             Log Out of Kamiwaza
           </DropdownMenuItem>
         </DropdownMenuContent>

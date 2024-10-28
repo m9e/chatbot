@@ -9,8 +9,10 @@ import { IconSpinner } from './ui/icons'
 import { getMessageFromCode } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { login, verifyToken } from '@/lib/kamiwazaApi'
+import { useAuth } from '@/lib/auth-context'
 
 export default function LoginForm() {
+  const { refreshUser } = useAuth()
   const router = useRouter()
   const [result, dispatch] = useFormState(authenticate, undefined)
 
