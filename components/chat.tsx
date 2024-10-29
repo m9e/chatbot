@@ -6,7 +6,7 @@ import { ChatPanel } from '@/components/chat-panel'
 import { EmptyScreen } from '@/components/empty-screen'
 import { ModelSelector } from '@/components/model-selector'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useUIState, useAIState } from 'ai/rsc'
 import { Message, ModelInfo } from '@/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
@@ -30,8 +30,9 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useUIState<typeof AI>()
   const [aiState] = useAIState()
-  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const [selectedModel, setSelectedModel] = useState<ModelInfo>()
   const [newChatId, setNewChatId] = useLocalStorage('newChatId', null)
+  const [savedModel, setSavedModel] = useLocalStorage<ModelInfo | null>('selectedModel', null)
   // Remove this line as we don't want to use anonymous
   // const userId = user?.id || 'anonymous'
 
@@ -86,9 +87,11 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const { messagesRef, scrollRef, visibilityRef, isAtBottom, scrollToBottom } =
     useScrollAnchor()
 
-  const handleModelSelect = (modelInfo: ModelInfo | null) => {
-    setSelectedModel(modelInfo)
-  }
+  // Memoize the handler to prevent infinite loops
+  const handleModelSelect = useCallback((modelInfo: ModelInfo | null) => {
+    setSelectedModel(modelInfo || undefined)
+    setSavedModel(modelInfo)
+  }, [setSavedModel])
 
   // Add this to maintain messages from aiState
   useEffect(() => {
@@ -110,6 +113,13 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
       setSelectedModel(aiState.selectedModel)
     }
   }, [aiState.selectedModel, selectedModel])
+
+  // Add effect to handle saved model initialization
+  useEffect(() => {
+    if (savedModel && !selectedModel) {
+      setSelectedModel(savedModel)
+    }
+  }, [savedModel])
 
   // Debug logs
   console.log('Chat render - messages:', messages)
@@ -133,7 +143,7 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
             messages={messages} 
             isShared={false} 
             user={user}
-            selectedModel={selectedModel} 
+            selectedModel={selectedModel || null} 
           />
         ) : (
           <EmptyScreen />
@@ -146,7 +156,8 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
         setInput={setInput}
         isAtBottom={isAtBottom}
         scrollToBottom={scrollToBottom}
-        selectedModel={selectedModel}
+        selectedModel={selectedModel || null}
+        isLoading={!selectedModel}
       />
     </div>
   )
