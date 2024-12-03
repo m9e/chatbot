@@ -22,6 +22,7 @@ export interface ChatPanelProps {
   isAtBottom: boolean
   scrollToBottom: () => void
   selectedModel: ModelInfo | null
+  isLoading?: boolean
 }
 
 export function ChatPanel({
@@ -31,7 +32,8 @@ export function ChatPanel({
   setInput,
   isAtBottom,
   scrollToBottom,
-  selectedModel
+  selectedModel,
+  isLoading
 }: ChatPanelProps) {
   const router = useRouter()
   const [aiState] = useAIState()
@@ -112,7 +114,7 @@ export function ChatPanel({
             selectedModel={selectedModel}
             chatId={id}
             onSubmit={handleSubmit}
-            isLoading={false}
+            isLoading={isLoading}
           />
         </div>
         <FooterText className="mt-3" />

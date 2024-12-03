@@ -6,7 +6,7 @@ import { ChatPanel } from '@/components/chat-panel'
 import { EmptyScreen } from '@/components/empty-screen'
 import { ModelSelector } from '@/components/model-selector'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useUIState, useAIState } from 'ai/rsc'
 import { Message, ModelInfo } from '@/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
@@ -14,8 +14,6 @@ import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { AI } from '@/lib/chat/actions'
-
-
 
 export interface ChatProps extends React.ComponentProps<'div'> {
   initialMessages?: Message[]
@@ -29,13 +27,12 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const path = usePathname()
   const [input, setInput] = useState('')
   const [messages, setMessages] = useUIState<typeof AI>()
-  const [aiState] = useAIState()
-  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const [aiState, setAIState] = useAIState()
+  const [selectedModel, setSelectedModel] = useState<ModelInfo>()
   const [newChatId, setNewChatId] = useLocalStorage('newChatId', null)
-  // Remove this line as we don't want to use anonymous
-  // const userId = user?.id || 'anonymous'
+  const [savedModel, setSavedModel] = useLocalStorage<ModelInfo | null>('selectedModel', null)
 
-  // Add debug logging for auth state
+  // Debug logging for auth state
   useEffect(() => {
     console.log('Chat auth state:', { 
       user: user?.id, 
@@ -60,15 +57,14 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
 
   useEffect(() => {
     if (user || loading) {
-      if (!path.includes('chat') && messages.length === 1 && !loading) {
+      if (!path.includes('chat') && messages?.length === 1 && !loading) {
         window.history.replaceState({}, '', `/chat/${id}`)
       }
     }
   }, [id, path, user, messages, loading])
 
   useEffect(() => {
-    const messagesLength = aiState.messages?.length
-    if (messagesLength === 2) {
+    if (aiState.messages?.length === 2) {
       router.refresh()
     }
   }, [aiState.messages, router])
@@ -86,35 +82,37 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
   const { messagesRef, scrollRef, visibilityRef, isAtBottom, scrollToBottom } =
     useScrollAnchor()
 
-  const handleModelSelect = (modelInfo: ModelInfo | null) => {
-    setSelectedModel(modelInfo)
-  }
+  // Model selection handler
+  const handleModelSelect = useCallback((modelInfo: ModelInfo | null) => {
+    if (modelInfo) {
+      console.log('Setting selected model:', modelInfo)
+      setSelectedModel(modelInfo)
+      setSavedModel(modelInfo)
+    }
+  }, [setSavedModel])
 
-  // Add this to maintain messages from aiState
+  // Sync messages from AI state
   useEffect(() => {
     if (aiState.messages?.length > 0) {
-      console.log('Updating messages from aiState:', aiState.messages)
-      // Update UI state with messages from aiState
       setMessages(aiState.messages.map((msg: Message) => ({
         id: msg.id,
         content: msg.content,
         role: msg.role
       })))
     }
-  }, [aiState.messages])
+  }, [aiState.messages, setMessages])
 
-  // Add this to maintain selected model from aiState
+  // Model state synchronization
   useEffect(() => {
-    if (aiState.selectedModel && !selectedModel) {
-      console.log('Setting selected model from aiState:', aiState.selectedModel)
-      setSelectedModel(aiState.selectedModel)
+    if (!selectedModel) {
+      if (aiState.selectedModel) {
+        setSelectedModel(aiState.selectedModel)
+        setSavedModel(aiState.selectedModel)
+      } else if (savedModel) {
+        setSelectedModel(savedModel)
+      }
     }
-  }, [aiState.selectedModel, selectedModel])
-
-  // Debug logs
-  console.log('Chat render - messages:', messages)
-  console.log('Chat render - aiState:', aiState)
-  console.log('Chat render - id:', id)
+  }, []) // Run only once on mount
 
   return (
     <div
@@ -128,12 +126,12 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
         <ModelSelector onModelSelect={handleModelSelect} />
       </div>
       <div className={cn('pb-[200px] pt-4 md:pt-10 bg-background')} ref={messagesRef}>
-        {messages?.length > 0 ? ( // Add null check and ensure length check
+        {messages?.length > 0 ? (
           <ChatList 
             messages={messages} 
             isShared={false} 
             user={user}
-            selectedModel={selectedModel} 
+            selectedModel={selectedModel || null} 
           />
         ) : (
           <EmptyScreen />
@@ -146,7 +144,8 @@ export function Chat({ id, className, missingKeys }: ChatProps) {
         setInput={setInput}
         isAtBottom={isAtBottom}
         scrollToBottom={scrollToBottom}
-        selectedModel={selectedModel}
+        selectedModel={selectedModel || null}
+        isLoading={!selectedModel}
       />
     </div>
   )

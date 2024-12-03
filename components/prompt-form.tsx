@@ -122,7 +122,7 @@ export function PromptForm({
           ref={inputRef}
           tabIndex={0}
           onKeyDown={onKeyDown}
-          placeholder="Send a message..."
+          placeholder={isLoading ? "Loading model..." : "Send a message..."}
           className="min-h-[44px] w-full resize-none bg-transparent px-2 py-[10px] focus-within:outline-none text-sm"
           autoFocus
           spellCheck={false}
@@ -132,11 +132,12 @@ export function PromptForm({
           rows={1}
           value={input}
           onChange={e => setInput(e.target.value)}
+          disabled={isLoading}
         />
 
         <button
           type="submit"
-          disabled={input === ''}
+          disabled={input === '' || isLoading}
           className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           <IconArrowElbow className="h-5 w-5" />

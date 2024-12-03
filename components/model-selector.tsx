@@ -21,30 +21,49 @@ interface ModelSelectorProps {
 export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   const [aiState] = useAIState()
   const [deployments, setDeployments] = useState<Deployment[]>([])
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
-  const [fixedModel, setFixedModel] = useState<ModelInfo | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>('')
 
+  // Fetch deployments and handle initial setup
   useEffect(() => {
     const fetchDeployments = async () => {
       try {
         const fetchedDeployments = await getKamiwazaDeployments()
         setDeployments(fetchedDeployments)
 
-        // Fetch fixed model information
-        const response = await fetch('/api/fixed-model')
-        const fixedModelData = await response.json()
-        if (fixedModelData.uri && fixedModelData.name) {
-          setFixedModel({
-            baseUrl: fixedModelData.uri,
-            modelName: fixedModelData.name
-          })
-        }
-
-        // Select fixed model by default if available, otherwise select first deployment
-        if (fixedModelData.uri && fixedModelData.name) {
-          handleModelChange(fixedModelData.name)
-        } else if (fetchedDeployments.length > 0) {
-          handleModelChange(fetchedDeployments[0].m_name)
+        if (fetchedDeployments.length > 0 && !selectedModel && !aiState.selectedModel) {
+          // Check for saved model first
+          const savedModelStr = window.localStorage.getItem('selectedModel')
+          if (savedModelStr) {
+            try {
+              const savedModel = JSON.parse(savedModelStr)
+              const deployment = fetchedDeployments.find((d: any) => d.m_name === savedModel.modelName)
+              if (deployment) {
+                // Use the saved model if it exists in deployments
+                const baseUrl = getDockerizedUrl(
+                  `http://${deployment.instances[0].host_name}:${deployment.lb_port}/v1`
+                )
+                const modelInfo = { baseUrl, modelName: deployment.m_name }
+                setSelectedModel(deployment.m_name)
+                onModelSelect(modelInfo)
+                return
+              }
+            } catch (error) {
+              console.error('Error parsing saved model:', error)
+            }
+          }
+          
+          // Fall back to first deployment if no saved model or saved model not found
+          const firstDeployment = fetchedDeployments[0]
+          const baseUrl = getDockerizedUrl(
+            `http://${firstDeployment.instances[0].host_name}:${firstDeployment.lb_port}/v1`
+          )
+          const modelInfo = {
+            baseUrl,
+            modelName: firstDeployment.m_name
+          }
+          
+          setSelectedModel(firstDeployment.m_name)
+          onModelSelect(modelInfo)
         }
       } catch (error) {
         console.error('Failed to fetch deployments:', error)
@@ -52,26 +71,29 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
     }
 
     fetchDeployments()
-  }, [])
+  }, []) // Empty dependency array - only run once on mount
+
+  // Sync with aiState selected model
+  useEffect(() => {
+    if (aiState.selectedModel && deployments.length > 0) {
+      const deployment = deployments.find(d => d.m_name === aiState.selectedModel?.modelName)
+      if (deployment && deployment.m_name !== selectedModel) {
+        setSelectedModel(deployment.m_name)
+      }
+    }
+  }, [aiState.selectedModel?.modelName, deployments.length]) // Only depend on model name and deployments length
 
   const handleModelChange = async (modelName: string) => {
     let baseUrl: string
     let modelInfo: ModelInfo
 
-    if (fixedModel && modelName === fixedModel.modelName) {
-      modelInfo = {
-        baseUrl: getDockerizedUrl(fixedModel.baseUrl),
-        modelName
-      }
+    const selectedDeployment = deployments.find(d => d.m_name === modelName)
+    if (selectedDeployment) {
+      baseUrl = getDockerizedUrl(`http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`)
+      modelInfo = { baseUrl, modelName }
     } else {
-      const selectedDeployment = deployments.find(d => d.m_name === modelName)
-      if (selectedDeployment) {
-        baseUrl = getDockerizedUrl(`http://${selectedDeployment.instances[0].host_name}:${selectedDeployment.lb_port}/v1`)
-        modelInfo = { baseUrl, modelName }
-      } else {
-        console.error('Selected deployment not found')
-        return
-      }
+      console.error('Selected deployment not found')
+      return
     }
 
     setSelectedModel(modelName)
@@ -88,7 +110,7 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
     }
   }
 
-  if (deployments.length === 0 && !fixedModel) {
+  if (deployments.length === 0) {
     return null
   }
 
@@ -100,11 +122,6 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {fixedModel && (
-          <SelectItem key={fixedModel.modelName} value={fixedModel.modelName}>
-            {fixedModel.modelName} (Fixed)
-          </SelectItem>
-        )}
         {deployments.map(deployment => (
           <SelectItem key={deployment.m_name} value={deployment.m_name}>
             {deployment.m_name} (Port: {deployment.lb_port})
