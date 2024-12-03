@@ -31,6 +31,28 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
         setDeployments(fetchedDeployments)
 
         if (fetchedDeployments.length > 0 && !selectedModel && !aiState.selectedModel) {
+          // Check for saved model first
+          const savedModelStr = window.localStorage.getItem('selectedModel')
+          if (savedModelStr) {
+            try {
+              const savedModel = JSON.parse(savedModelStr)
+              const deployment = fetchedDeployments.find((d: any) => d.m_name === savedModel.modelName)
+              if (deployment) {
+                // Use the saved model if it exists in deployments
+                const baseUrl = getDockerizedUrl(
+                  `http://${deployment.instances[0].host_name}:${deployment.lb_port}/v1`
+                )
+                const modelInfo = { baseUrl, modelName: deployment.m_name }
+                setSelectedModel(deployment.m_name)
+                onModelSelect(modelInfo)
+                return
+              }
+            } catch (error) {
+              console.error('Error parsing saved model:', error)
+            }
+          }
+          
+          // Fall back to first deployment if no saved model or saved model not found
           const firstDeployment = fetchedDeployments[0]
           const baseUrl = getDockerizedUrl(
             `http://${firstDeployment.instances[0].host_name}:${firstDeployment.lb_port}/v1`
