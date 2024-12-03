@@ -23,13 +23,14 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
 
+  // Fetch deployments and handle initial setup
   useEffect(() => {
     const fetchDeployments = async () => {
       try {
         const fetchedDeployments = await getKamiwazaDeployments()
         setDeployments(fetchedDeployments)
 
-        if (fetchedDeployments.length > 0 && !selectedModel) {
+        if (fetchedDeployments.length > 0 && !selectedModel && !aiState.selectedModel) {
           const firstDeployment = fetchedDeployments[0]
           const baseUrl = getDockerizedUrl(
             `http://${firstDeployment.instances[0].host_name}:${firstDeployment.lb_port}/v1`
@@ -48,7 +49,17 @@ export function ModelSelector({ onModelSelect }: ModelSelectorProps) {
     }
 
     fetchDeployments()
-  }, [])
+  }, []) // Empty dependency array - only run once on mount
+
+  // Sync with aiState selected model
+  useEffect(() => {
+    if (aiState.selectedModel && deployments.length > 0) {
+      const deployment = deployments.find(d => d.m_name === aiState.selectedModel?.modelName)
+      if (deployment && deployment.m_name !== selectedModel) {
+        setSelectedModel(deployment.m_name)
+      }
+    }
+  }, [aiState.selectedModel?.modelName, deployments.length]) // Only depend on model name and deployments length
 
   const handleModelChange = async (modelName: string) => {
     let baseUrl: string

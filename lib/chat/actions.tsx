@@ -143,27 +143,30 @@ async function submitUserMessage({
   const aiState = getMutableAIState<typeof AI>()
   const currentState = aiState.get()
   
+  // Keep existing model or use the new one
+  const selectedModel = currentState.selectedModel || { baseUrl, modelName }
+  
   aiState.update({
-    chatId, // Use the provided chatId
+    chatId,
     messages: [
       ...currentState.messages,
       { id: nanoid(), role: 'user', content: message }
     ],
-    selectedModel: { baseUrl, modelName }
+    selectedModel  // Use the preserved model info
   })
 
   let textStream: undefined | ReturnType<typeof createStreamableValue<string>>
   let textNode: undefined | React.ReactNode
 
   const openai = createOpenAI({
-    baseURL: getDockerizedUrl(baseUrl),
+    baseURL: getDockerizedUrl(selectedModel.baseUrl),  // Use the preserved model's baseUrl
     apiKey: 'kamiwaza_model'
   })
 
-  console.log(`Created OpenAI client with baseURL: ${getDockerizedUrl(baseUrl)}`)
+  console.log(`Created OpenAI client with baseURL: ${getDockerizedUrl(selectedModel.baseUrl)}`)
 
   const result = await streamUI({
-    model: openai(baseUrl.includes('localhost') ? modelName : 'model'),
+    model: openai(selectedModel.baseUrl.includes('localhost') ? selectedModel.modelName : 'model'),
     initial: <SpinnerMessage />,
     system: `You are a helpful AI assistant.`,
     messages: [
@@ -177,7 +180,7 @@ async function submitUserMessage({
     text: ({ content, done, delta }) => {
       if (!textStream) {
         textStream = createStreamableValue('')
-        textNode = <BotMessage content={textStream.value} selectedModel={{ baseUrl, modelName }} />
+        textNode = <BotMessage content={textStream.value} selectedModel={selectedModel} />
       }
 
       if (done) {
@@ -191,7 +194,8 @@ async function submitUserMessage({
               role: 'assistant',
               content
             }
-          ]
+          ],
+          selectedModel  // Make sure to preserve the model in the final state
         })
       } else {
         textStream.update(delta)
@@ -307,7 +311,7 @@ export const AI = createAI<AIState, UIState>({
     
     if (!state.chatId) {
       console.error('onSetAIState: No chatId in state')
-      return;  // Return without value
+      return;
     }
 
     console.log('onSetAIState: Starting with chatId:', state.chatId)
@@ -327,13 +331,13 @@ export const AI = createAI<AIState, UIState>({
         console.log('onSetAIState: UserData after verify:', userData)
       } catch (error) {
         console.error('onSetAIState: Error verifying token:', error)
-        return;  // Return without value
+        return;
       }
     }
 
     if (!userData?.id) {
       console.log('onSetAIState: No valid user, not saving chat')
-      return;  // Return without value
+      return;
     }
 
     const { chatId, messages, selectedModel } = state
@@ -357,10 +361,11 @@ export const AI = createAI<AIState, UIState>({
     console.log('onSetAIState: Saving chat:', {
       id: chat.id,
       userId: chat.userId,
-      messageCount: chat.messages.length
+      messageCount: chat.messages.length,
+      selectedModel: chat.selectedModel  // Add logging for selectedModel
     })
     
-    await saveChat(chat)  // Just await, don't store result
+    await saveChat(chat)
     console.log('onSetAIState: Chat saved')
   }
 })
